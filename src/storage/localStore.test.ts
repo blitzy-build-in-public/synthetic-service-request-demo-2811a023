@@ -291,6 +291,25 @@ describe('request and audit entry shape on load', () => {
       request: draftWithField('description', 'a'.repeat(2001)),
     },
     { name: 'a numeric requester name', request: draftWithField('requesterName', 42) },
+    // The domain stores both text fields trimmed, so surrounding whitespace is text it never wrote.
+    ...[
+      { field: 'requesterName', label: 'requester name', text: 'Riley Test' },
+      { field: 'description', label: 'description', text: 'Fictional test request.' },
+    ].flatMap(({ field, label, text }) =>
+      [
+        { variant: 'a leading space', value: ` ${text}` },
+        { variant: 'a trailing space', value: `${text} ` },
+        { variant: 'a leading tab and a trailing newline', value: `\t${text}\n` },
+        { variant: 'only whitespace', value: '   ' },
+      ].map(({ variant, value }) => ({
+        name: `a ${label} with ${variant}`,
+        request: draftWithField(field, value),
+      })),
+    ),
+    {
+      name: 'a whitespace-only requester name on a Submitted request',
+      request: { ...draftWithField('requesterName', '   '), status: 'Submitted' },
+    },
     { name: 'lastUpdated "yesterday"', request: draftWithField('lastUpdated', 'yesterday') },
     {
       name: 'lastUpdated on 30 February',
@@ -345,6 +364,10 @@ describe('request and audit entry shape on load', () => {
     {
       name: 'a blank name and description on a Draft',
       request: makeDraft({ requesterName: '', description: '' }),
+    },
+    {
+      name: 'a blank name and description on a Submitted request',
+      request: makeDraft({ requesterName: '', description: '', status: 'Submitted' }),
     },
     {
       name: 'an 80-code-point requester name',
@@ -410,6 +433,11 @@ describe('load never writes', () => {
       kind: 'ok',
     },
     { name: 'unreadable', initial: { [STORAGE_KEY]: 'not json {' }, kind: 'unreadable' },
+    {
+      name: 'untrimmed-name unreadable',
+      initial: { [STORAGE_KEY]: envelopeWith([draftWithField('requesterName', ' Riley Test ')]) },
+      kind: 'unreadable',
+    },
     {
       name: 'wrong-version',
       initial: { [STORAGE_KEY]: '{"version":2,"requests":[]}' },

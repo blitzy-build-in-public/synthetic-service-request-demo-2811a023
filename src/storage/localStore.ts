@@ -70,6 +70,11 @@ function isWithinLimit(value: string, limit: number): boolean {
   return countCharacters(value) <= limit;
 }
 
+// The domain stores these fields trimmed, so untrimmed or whitespace-only text is data the app never wrote.
+function isStoredText(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && value === value.trim() && isWithinLimit(value, limit);
+}
+
 // A blank type is the one stored-shape rule that reads the status: only an incomplete Draft may lack a type.
 function isStoredRequestType(value: unknown, status: Status): value is RequestType | '' {
   return isRequestType(value) || (value === '' && status === 'Draft');
@@ -126,10 +131,8 @@ function parseServiceRequest(value: unknown): ServiceRequest | null {
   if (
     typeof id !== 'string' ||
     !REQUEST_ID_PATTERN.test(id) ||
-    typeof requesterName !== 'string' ||
-    !isWithinLimit(requesterName, LIMITS.requesterName) ||
-    typeof description !== 'string' ||
-    !isWithinLimit(description, LIMITS.description) ||
+    !isStoredText(requesterName, LIMITS.requesterName) ||
+    !isStoredText(description, LIMITS.description) ||
     !isPriority(priority) ||
     !isStatus(status) ||
     !isStoredRequestType(requestType, status) ||
