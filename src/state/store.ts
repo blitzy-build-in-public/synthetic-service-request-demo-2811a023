@@ -112,7 +112,7 @@ export function createAppStore({ storage, now }: AppStoreOptions): AppStore {
     }
   }
 
-  // Persistence comes before notification, so subscribers never render a change that was not yet saved.
+  // The save is attempted before notification; a failed save still publishes the in-memory change with the warning set.
   function persist(requests: readonly ServiceRequest[]): void {
     const saved = storage.save(requests);
     publish(savedState(state, requests, saved));
