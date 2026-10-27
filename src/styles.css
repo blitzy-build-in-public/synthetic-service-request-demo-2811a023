@@ -234,7 +234,7 @@ a:active {
    words too long for their column, such as an unbroken name, so short words
    never split; field values may break anywhere. Borders stay separate
    because a sticky header loses its top and bottom lines to the collapsed
-   model; every cell draws its end and bottom edges, first cells their start
+   model; every cell draws its right and bottom edges, first cells their left
    and header cells their top, a single-line grid. */
 table {
   border-collapse: separate;
@@ -247,14 +247,18 @@ td {
   padding-inline: 0.75rem;
   text-align: start;
   vertical-align: top;
-  border-inline-end: 1px solid var(--color-border);
+  /* The side borders are physical, not logical: a cell with dir="auto" takes
+     its direction from its text, so a logical side would move its grid line
+     to the other edge for right-to-left text. Columns follow the table's
+     direction, which is always the page's left to right. */
+  border-right: 1px solid var(--color-border);
   border-block-end: 1px solid var(--color-border);
   overflow-wrap: break-word;
 }
 
 th:first-child,
 td:first-child {
-  border-inline-start: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
 }
 
 th,

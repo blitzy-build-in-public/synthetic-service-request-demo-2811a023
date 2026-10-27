@@ -106,9 +106,12 @@ export function RequestForm(props: RequestFormProps) {
     <form className="request-form" noValidate onSubmit={handleSubmit}>
       <div className="form-field">
         <label htmlFor={controlId('requesterName')}>Requester name</label>
+        {/* The name and the description each take their base direction from their first strong character,
+            so right-to-left text runs right to left. This sets direction only and translates nothing. */}
         <input
           id={controlId('requesterName')}
           type="text"
+          dir="auto"
           value={requesterName}
           onChange={(event: ChangeEvent<HTMLInputElement>) => {
             setRequesterName(event.target.value);
@@ -141,6 +144,7 @@ export function RequestForm(props: RequestFormProps) {
         <textarea
           id={controlId('description')}
           rows={4}
+          dir="auto"
           value={description}
           onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
             setDescription(event.target.value);

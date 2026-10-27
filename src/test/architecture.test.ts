@@ -78,14 +78,19 @@ const WHITESPACE = /\s/;
 // ECMAScript's line terminators. Each ends a line comment, none may stand in a regular expression literal, and
 // one before a `++`, `--` or `!` makes it prefix.
 const LINE_BREAK = /[\n\r\u2028\u2029]/;
-// The line breaks a quoted string cannot hold unescaped. Since ES2019 a script string may hold U+2028 and U+2029,
-// and CSS reads neither as a newline, so a string in either grammar runs on past them.
-const STRING_LINE_BREAK = /[\n\r]/;
+// The line breaks a quoted string cannot hold unescaped, one set per grammar. Since ES2019 a script string may hold
+// U+2028 and U+2029, and a form feed is plain whitespace there. CSS preprocessing turns CR, CRLF and FF into a
+// newline, which ends a string, but CSS reads neither U+2028 nor U+2029 as a newline. A string scanned past a CSS
+// form feed would run on into text the browser reads as rules, and could hide one as a comment.
+const SCRIPT_STRING_LINE_BREAK = /[\n\r]/;
+const CSS_STRING_LINE_BREAK = /[\n\r\f]/;
 const DIGIT = /\d/;
 const IDENTIFIER_START = /[A-Za-z_$\u0080-\uffff]/;
-// U+2028 and U+2029 are line terminators, so a word ends before them: one that took them in would hide the line
-// break after it from the postfix decision.
-const IDENTIFIER_PART = /[\w$\u0080-\u2027\u202a-\uffff]/;
+// A word ends before any whitespace or line terminator. One that took a non-ASCII space in would no longer match
+// the keyword before it: `return` and a no-break space before `/[/*]/` would read as a division, and the `/*` in
+// the regular expression would open a comment that hides the code after it. One that took U+2028 or U+2029 in
+// would hide the line break after it from the postfix decision.
+const IDENTIFIER_PART = /(?!\s)[\w$\u0080-\uffff]/;
 const NUMBER_PART = /[\w$.]/;
 const CSS_NAME_PART = /[\w\-\u0080-\uffff]/;
 
@@ -94,12 +99,15 @@ function escapeLength(source: string, index: number): number {
   return source.startsWith('\r\n', index + 1) ? 3 : 2;
 }
 
-/** The index just past the quoted string opening at `start`; only a backslash escape carries it over a line break. */
-function endOfString(source: string, start: number, construct: string): number {
+/**
+ * The index just past the quoted string opening at `start`. `lineBreak` holds the grammar's string line breaks: one
+ * unescaped leaves the string unterminated, so only a backslash escape carries it over one.
+ */
+function endOfString(source: string, start: number, construct: string, lineBreak: RegExp): number {
   const quote = source.charAt(start);
   let index = start + 1;
   for (let char = source.charAt(index); char !== quote; char = source.charAt(index)) {
-    if (char === '' || STRING_LINE_BREAK.test(char)) {
+    if (char === '' || lineBreak.test(char)) {
       throw unterminated(construct, source, start);
     }
     index += char === '\\' ? escapeLength(source, index) : 1;
@@ -246,7 +254,7 @@ function stripScriptComments(source: string, jsx: boolean): string {
         continue;
       }
       if (char === '\'' || char === '"') {
-        take(endOfString(source, index, 'string literal') - index);
+        take(endOfString(source, index, 'string literal', SCRIPT_STRING_LINE_BREAK) - index);
       } else if (char === '`') {
         takeTemplate();
       } else if (source.startsWith('=>', index)) {
@@ -362,7 +370,7 @@ function stripScriptComments(source: string, jsx: boolean): string {
       memberNameNext = false;
       lineBreakBefore = false;
       if (char === '\'' || char === '"') {
-        take(endOfString(source, index, 'string literal') - index);
+        take(endOfString(source, index, 'string literal', SCRIPT_STRING_LINE_BREAK) - index);
         operandMayStart = false;
       } else if (char === '`') {
         takeTemplate();
@@ -474,7 +482,7 @@ function stripCssComments(source: string): string {
     if (char === '\\') {
       index += escapeLength(source, index);
     } else if (char === '\'' || char === '"') {
-      index = endOfString(source, index, 'CSS string');
+      index = endOfString(source, index, 'CSS string', CSS_STRING_LINE_BREAK);
     } else if (CSS_NAME_PART.test(char)) {
       while (CSS_NAME_PART.test(source.charAt(index))) {
         index += 1;
@@ -600,23 +608,36 @@ function stripHtmlComments(html: string): string {
   return output;
 }
 
-// Stop at quotes and statement delimiters to avoid spanning statements; string-named bindings are not recognized.
-const FROM_IMPORT_PATTERN = /\b(?:import|export)\b[^'"`;()=]*?\bfrom\s*(['"])([^'"]+)\1/g;
-const SIDE_EFFECT_IMPORT_PATTERN = /\bimport\s*(['"])([^'"]+)\1/g;
+// Every `import` and `export` in the stripped code, those in literals too: the scanner may take a division for a
+// regular expression, so its reading cannot decide which keyword opens a declaration.
+const MODULE_KEYWORD_PATTERN = /\b(?:import|export)\b/g;
+// Sticky, so each matches only at its `lastIndex`, which importSpecifiers sets to one keyword's offset. Statement
+// delimiters end a match. A binding name may be a string, as in `import { 'a' as b }` or `export * as 'c'`, so a
+// quoted name is taken whole, but only where `,`, `}`, `as` or `from` follows it: a side-effect import's path ends
+// the match instead of running on to a later `from`.
+const FROM_IMPORT_PATTERN = /\b(?:import|export)\b(?:[^'"`;()=]|(?:'(?:[^'\\\n\r]|\\(?:\r\n|[\s\S]))*'|"(?:[^"\\\n\r]|\\(?:\r\n|[\s\S]))*")(?=\s*(?:[,}]|(?:as|from)[\s'"])))*?\bfrom\s*(['"])([^'"]+)\1/y;
+const SIDE_EFFECT_IMPORT_PATTERN = /\bimport\s*(['"])([^'"]+)\1/y;
 
-/** Extracts specifiers from supported identifier-bound imports and re-exports, including multi-line and side-effect forms. */
+/**
+ * Extracts specifiers from imports and re-exports, string-named, multi-line and side-effect forms included, in
+ * source order. Every keyword gets its own attempt over the whole text, so no match from an earlier one, whether it
+ * started in a literal or ran on through one, can swallow a declaration: each is tried from its own keyword, where
+ * its binding list starts in code. Such a match can only add a specifier, which fails closed. A declaration reached
+ * from several keywords, as through `export { a as import } from 'm'`, counts once, keyed by where its match ends.
+ */
 function importSpecifiers(source: string, syntax: SourceSyntax): string[] {
   const code = stripComments(source, syntax);
-  const specifiers: string[] = [];
-  for (const pattern of [FROM_IMPORT_PATTERN, SIDE_EFFECT_IMPORT_PATTERN]) {
-    for (const match of code.matchAll(pattern)) {
-      const specifier = match[2];
+  const specifiersByEnd = new Map<number, string>();
+  for (const keyword of code.matchAll(MODULE_KEYWORD_PATTERN)) {
+    for (const pattern of [FROM_IMPORT_PATTERN, SIDE_EFFECT_IMPORT_PATTERN]) {
+      pattern.lastIndex = keyword.index;
+      const specifier = pattern.exec(code)?.[2];
       if (specifier !== undefined) {
-        specifiers.push(specifier);
+        specifiersByEnd.set(pattern.lastIndex, specifier);
       }
     }
   }
-  return specifiers;
+  return [...specifiersByEnd].sort(([left], [right]) => left - right).map(([, specifier]) => specifier);
 }
 
 /** Resolves `specifier` as written in `fromFile`: relative paths fold `.` and `..`; bare names are packages. */
@@ -769,6 +790,9 @@ const PRODUCTION_BANS: readonly Ban[] = [
   ['indexedDB', /\bindexedDB\b/],
   ['document.cookie', /\bdocument\.cookie\b/],
   ['dynamic import(', /\bimport\s*\(/],
+  // Vite turns a glob into a lazy chunk per match, or into static imports of them, none of which an import
+  // statement names.
+  ['import.meta.glob', /\bimport\s*\.\s*meta\s*\.\s*glob\b/],
 ];
 
 const ABSOLUTE_URL_PATTERN = /https?:\/\/[^\s'"`)>]*/gi;
@@ -1059,6 +1083,9 @@ describe('checker helpers', () => {
     ['tsx', 'const a = <List<string', /Unterminated JSX type argument list/],
     ['tsx', 'const a = <p>a < b</p>;', /Unexpected < in JSX text/],
     ['css', 'a { content: \'open }', /Unterminated CSS string/],
+    // A browser ends this string at the form feed and applies the .b rule, which a scan carried on past it would
+    // strip as a comment.
+    ['css', '.a{content:\'x\fy\' /* \' } .b{background:url(//cdn.example/x.png)} /* */', /Unterminated CSS string/],
     ['css', '/* open', /Unterminated CSS comment/],
     ['css', 'a { background: url(open }', /Unterminated CSS url\( token/],
   ])('stripComments as %s throws on %j rather than scan it out of step', (syntax, source, message) => {
@@ -1120,6 +1147,9 @@ describe('checker helpers', () => {
     ['ts', 'U+2029', 'const s = "a\u2029b";'],
     ['css', 'U+2028', 'a::before { content: \'a\u2028b\'; }'],
     ['css', 'U+2029', 'a::before { content: "a\u2029b"; }'],
+    ['ts', 'form feed', 'const s = \'a\fb\';'],
+    // A backslash before a CSS newline, a form feed included, continues the string onto the next line.
+    ['css', 'backslash-escaped form feed', 'a::before { content: \'a\\\fb\'; }'],
   ])('stripComments as %s keeps a string holding a %s verbatim', (syntax, _label, source) => {
     expect(stripComments(source, syntax)).toBe(source);
   });
@@ -1153,6 +1183,67 @@ describe('checker helpers', () => {
       expect(() => stripComments(`const a = 1;${terminator}const b = 'open`, 'ts')).toThrow(
         /^Unterminated string literal starting on line 2\.$/,
       );
+    },
+  );
+
+  // Every ECMAScript whitespace code point but the space, which the fixtures above use. Written as escapes, so this
+  // file holds none of them raw.
+  const WHITESPACE_CODE_POINTS: ReadonlyArray<[label: string, whitespace: string]> = [
+    ['TAB', '\u0009'],
+    ['VT', '\u000b'],
+    ['FF', '\u000c'],
+    ['U+00A0', '\u00a0'],
+    ['U+1680', '\u1680'],
+    ['U+2000', '\u2000'],
+    ['U+2001', '\u2001'],
+    ['U+2002', '\u2002'],
+    ['U+2003', '\u2003'],
+    ['U+2004', '\u2004'],
+    ['U+2005', '\u2005'],
+    ['U+2006', '\u2006'],
+    ['U+2007', '\u2007'],
+    ['U+2008', '\u2008'],
+    ['U+2009', '\u2009'],
+    ['U+200A', '\u200a'],
+    ['U+202F', '\u202f'],
+    ['U+205F', '\u205f'],
+    ['U+3000', '\u3000'],
+    ['U+FEFF', '\ufeff'],
+  ];
+
+  // Whatever whitespace follows `return`, an operand starts after it, so the `/` opens a regular expression and the
+  // `/*` in that opens no comment that would hide the code up to the `*/` in the last one.
+  it.each(WHITESPACE_CODE_POINTS)(
+    'a %s after `return` hides no code behind a regular expression',
+    (_label, whitespace) => {
+      const source = [
+        `export const f = (m: string) => { return${whitespace}/[/*]/.test(m); };`,
+        'fetch(\'/x\');',
+        'const close = /[*/]/;',
+      ].join(' ');
+      const code = stripComments(source, 'ts');
+      expect(code).toBe(source);
+      expect(bannedUses(code, PRODUCTION_BANS)).toEqual(['fetch(']);
+    },
+  );
+
+  it.each(WHITESPACE_CODE_POINTS)(
+    'a %s after `return` hides no import from the layering check',
+    (_label, whitespace) => {
+      const rule = IMPORT_RULES.find(({ layers }) => layers.includes('components'));
+      if (rule === undefined) {
+        throw new Error('IMPORT_RULES holds no rule for the components layer.');
+      }
+      const specifier = '../storage/localStore';
+      const source = [
+        `export const f = (m: string) => { return${whitespace}/[/*]/.test(m); };`,
+        `import { STORAGE_KEY } from '${specifier}';`,
+        'const close = /[*/]/;',
+      ].join('\n');
+      expect(importSpecifiers(source, 'ts')).toEqual([specifier]);
+      expect(importViolations('/src/components/Probe.tsx', source, rule)).toEqual([
+        `'${specifier}' resolves to /src/storage/localStore, outside /src/domain/, /src/state/, /src/components/`,
+      ]);
     },
   );
 
@@ -1222,6 +1313,15 @@ describe('checker helpers', () => {
     expect(importSpecifiers(source, 'ts').sort()).toEqual(['../b', './a', './c', './d.css', 'react-dom/client']);
   });
 
+  // The first declaration in each source has no `;`, so a match from its keyword may run on to the specifier of the
+  // next, which that declaration's own keyword also reaches: it must count once.
+  it.each<[string, string[]]>([
+    ['export interface I { a: string }\nimport { X } from \'./c\'', ['./c']],
+    ['import \'a\'\nexport { b } from \'./c\'', ['./c', 'a']],
+  ])('importSpecifiers counts each declaration in %j once', (source, expected) => {
+    expect(importSpecifiers(source, 'ts').sort()).toEqual(expected);
+  });
+
   it.each<[SourceSyntax, string]>([
     [
       'ts',
@@ -1250,6 +1350,108 @@ describe('checker helpers', () => {
   ])('importSpecifiers finds the import between comment delimiters in %s source %j', (syntax, source) => {
     expect(stripComments(source, syntax)).toBe(source);
     expect(importSpecifiers(source, syntax)).toEqual(['../storage/localStore']);
+  });
+
+  // A binding name may be a string, and TypeScript compiles each form here. Five sources hold `export {`,
+  // `import a,` or `export "` in a string, a regular expression or JSX text: a match started there pairs the quote
+  // after it with a later one, and must not swallow the storage import. Where that match runs on to a `from`, it adds
+  // the specifier there, which fails closed, and a third column lists every specifier found, in source order. Sources
+  // joined from parts stay on one line because no quoted name spans a line break, so a break would hide that pairing.
+  it.each<[string, string, string[]?]>([
+    ['sampleData', 'import { \'createSampleRequests\' as create } from \'../storage/sampleData\';'],
+    ['sampleData', 'import { "createSampleRequests" as create } from "../storage/sampleData";'],
+    ['localStore', 'import { type \'StorageAdapter\' as Adapter } from \'../storage/localStore\';'],
+    ['localStore', 'export { STORAGE_KEY as \'key\' } from \'../storage/localStore\';'],
+    ['localStore', 'export { \'STORAGE_KEY\' as "key" } from "../storage/localStore";'],
+    ['localStore', 'export * as \'storage\' from \'../storage/localStore\';'],
+    ['localStore', 'export { STORAGE_KEY as \'Don\\\'t; (from) = x\' } from \'../storage/localStore\';'],
+    [
+      'localStore',
+      [
+        'const open = \'export {\';',
+        'import { STORAGE_KEY } from \'../storage/localStore\';',
+        'const close = \'from "../domain/model"\';',
+      ].join(' '),
+    ],
+    [
+      'localStore',
+      [
+        'const verb = \'import a,\';',
+        'import { STORAGE_KEY } from \'../storage/localStore\';',
+        'const close = \'from "../domain/model"\';',
+      ].join(' '),
+    ],
+    [
+      'localStore',
+      [
+        'export const marker = "export {";',
+        'export { STORAGE_KEY as "from\'react\'" } from \'../storage/localStore\';',
+      ].join(' '),
+      ['react', '../storage/localStore'],
+    ],
+    [
+      'localStore',
+      [
+        'const marker = /export {"/;',
+        'export { STORAGE_KEY as "from\'react\'" } from \'../storage/localStore\';',
+      ].join(' '),
+      ['react', '../storage/localStore'],
+    ],
+    [
+      'localStore',
+      [
+        'export const Hint = () => <p>export "</p>;',
+        'export { STORAGE_KEY as "from\'react\'" } from \'../storage/localStore\';',
+      ].join(' '),
+      ['react', '../storage/localStore'],
+    ],
+    // The apostrophe in JSX text after a real `export` opens a quoted name running over the storage import to the
+    // `', from 'react'` in later JSX text, so that match adds react; the import still matches from its own keyword.
+    [
+      'localStore',
+      [
+        'export default <p>x\'</p>;',
+        'import { STORAGE_KEY } from "../storage/localStore";',
+        'export const z = <p>\', from \'react\'</p>;',
+        'export const k = STORAGE_KEY;',
+      ].join(' '),
+      ['../storage/localStore', 'react'],
+    ],
+    // Matched from both the `export` and the `import` in its binding list, the declaration counts once.
+    ['localStore', 'export { STORAGE_KEY as import } from \'../storage/localStore\';'],
+  ])('the components rule finds the storage %s import in %j', (module, source, specifiers) => {
+    const rule = IMPORT_RULES.find(({ layers }) => layers.includes('components'));
+    if (rule === undefined) {
+      throw new Error('IMPORT_RULES holds no rule for the components layer.');
+    }
+    const specifier = `../storage/${module}`;
+    expect(importSpecifiers(source, 'tsx')).toEqual(specifiers ?? [specifier]);
+    expect(importViolations('/src/components/Probe.tsx', source, rule)).toEqual([
+      `'${specifier}' resolves to /src/storage/${module}, outside /src/domain/, /src/state/, /src/components/`,
+    ]);
+  });
+
+  // The scanner takes the `/` after a variable named `of` in a `for` head, or after the `}` closing a function
+  // expression, for the start of a regular expression, which then runs over the import to the next `/`.
+  it.each([
+    'const of = 4; for (const x = of / 2; x < 1;) {} import { useState } from \'react\'; export const y = 1 / 2;',
+    'export const v = function () {} / 2; import { useState } from \'react\'; export const w = 1 / 2;',
+  ])('the domain rule finds the react import after a division in %j', (source) => {
+    const rule = IMPORT_RULES.find(({ layers }) => layers.includes('domain'));
+    if (rule === undefined) {
+      throw new Error('IMPORT_RULES holds no rule for the domain layer.');
+    }
+    expect(importSpecifiers(source, 'ts')).toEqual(['react']);
+    expect(importViolations('/src/domain/probe.ts', source, rule)).toEqual([
+      '\'react\' imports package react, which this layer may not use',
+    ]);
+  });
+
+  it.each([
+    'const modules = import.meta.glob(\'../storage/*.ts\');',
+    'const modules = import . meta\n  . glob(\'../storage/*.ts\', { eager: true });',
+  ])('bannedUses reports import.meta.glob in %j', (source) => {
+    expect(bannedUses(stripComments(source, 'ts'), PRODUCTION_BANS)).toEqual(['import.meta.glob']);
   });
 
   it.each<[string, string, ResolvedSpecifier]>([

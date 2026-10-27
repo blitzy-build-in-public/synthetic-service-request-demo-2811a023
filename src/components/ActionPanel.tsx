@@ -218,10 +218,12 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
         <form ref={noteFormRef} id={noteFormId} className="note-form" noValidate onSubmit={handleNoteSubmit}>
           <div className="form-field">
             <label htmlFor={noteId}>{copy.label}</label>
+            {/* A note's base direction follows its first strong character, so right-to-left text runs right to left. */}
             <textarea
               ref={noteFieldRef}
               id={noteId}
               rows={3}
+              dir="auto"
               value={noteText}
               onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
                 setNoteText(event.target.value);

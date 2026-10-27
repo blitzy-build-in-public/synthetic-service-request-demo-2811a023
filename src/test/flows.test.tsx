@@ -884,8 +884,10 @@ describe('UI edge cases', () => {
     expect(code?.getAttribute('dir')).toBe('auto');
   });
 
-  // Unseen, a zero-width or control code point lets an unknown ID pass for REQ-0001 and a bidi control
-  // reorders it, so each shows as an escape. TAB and LF already show as a gap or line break, and NBSP as a gap.
+  // Unseen, a zero-width, control or default-ignorable code point (a variation selector, the combining
+  // grapheme joiner, a Hangul filler) lets an unknown ID pass for REQ-0001 and a bidi control reorders it,
+  // so each shows as an escape, an astral one as a single escape. TAB and LF already show as a gap or line
+  // break, and NBSP as a gap.
   it.each([
     ['#/requests/REQ-0001%E2%80%8B', 'REQ-0001⟨U+200B⟩'],
     ['#/requests/%E2%80%AEREQ-0001', '⟨U+202E⟩REQ-0001'],
@@ -897,6 +899,14 @@ describe('UI edge cases', () => {
     ['#/requests/REQ-0001%E2%80%A8', 'REQ-0001⟨U+2028⟩'],
     ['#/requests/REQ-0001%E2%80%A9', 'REQ-0001⟨U+2029⟩'],
     ['#/requests/REQ-0001%F3%A0%80%81', 'REQ-0001⟨U+E0001⟩'],
+    ['#/requests/REQ-0001%CD%8F', 'REQ-0001⟨U+034F⟩'],
+    ['#/requests/REQ-0001%EF%B8%8F', 'REQ-0001⟨U+FE0F⟩'],
+    ['#/requests/REQ-0001%F3%A0%84%80', 'REQ-0001⟨U+E0100⟩'],
+    ['#/requests/%E3%85%A4REQ-0001', '⟨U+3164⟩REQ-0001'],
+    ['#/requests/REQ-0001%E1%85%9F', 'REQ-0001⟨U+115F⟩'],
+    ['#/requests/REQ-0001%EF%BE%A0', 'REQ-0001⟨U+FFA0⟩'],
+    ['#/requests/REQ-0001%E1%9E%B4', 'REQ-0001⟨U+17B4⟩'],
+    ['#/requests/REQ-0001%E1%A0%8B', 'REQ-0001⟨U+180B⟩'],
     ['#/requests/REQ-0001%09', 'REQ-0001\t'],
     ['#/requests/REQ-0001%0A', 'REQ-0001\n'],
   ])('%s is reported with its unknown ID shown as %j', (hash, expected) => {
@@ -1704,4 +1714,53 @@ describe('User text direction', () => {
     expect(nameCell?.textContent).toBe(request.requesterName);
     expect(nameCell?.getAttribute('dir')).toBe('auto');
   });
+
+  it.each([REASON_FORM, INFORMATION_FORM])(
+    'the $label field takes its base direction from Arabic-first text typed into it and keeps that text',
+    (form) => {
+      renderNoteForm(form);
+      const field = labelledControl(form.label, HTMLTextAreaElement);
+      expect(field.getAttribute('dir')).toBe('auto');
+      const text = 'ملاحظة تجريبية للمكتب رقم 2026.';
+
+      fireEvent.change(field, { target: { value: text } });
+
+      expect(labelledControl(form.label, HTMLTextAreaElement)).toBe(field);
+      expect(field.value).toBe(text);
+      expect(field.getAttribute('dir')).toBe('auto');
+    },
+  );
+
+  it.each([
+    { mode: 'create', hash: '#/', open: 'New request', selects: ['Request type'] },
+    { mode: 'edit', hash: '#/requests/REQ-0001', open: 'Edit', selects: ['Request type', 'Priority'] },
+  ])(
+    'the $mode form takes the Requester name and Description base direction from Arabic-first text and keeps it',
+    ({ hash, open, selects }) => {
+      renderApp({ hash });
+      fireEvent.click(screen.getByRole('button', { name: open }));
+      const name = labelledControl('Requester name', HTMLInputElement);
+      const description = labelledControl('Description', HTMLTextAreaElement);
+      const typed = [
+        [name, 'اختبار ريلي'],
+        [description, 'هذا طلب تجريبي للمكتب.\nالسطر الثاني رقم 2026.'],
+      ] as const;
+
+      for (const [field, text] of typed) {
+        expect(field.getAttribute('dir')).toBe('auto');
+        fireEvent.change(field, { target: { value: text } });
+      }
+
+      expect(labelledControl('Requester name', HTMLInputElement)).toBe(name);
+      expect(labelledControl('Description', HTMLTextAreaElement)).toBe(description);
+      for (const [field, text] of typed) {
+        expect(field.value).toBe(text);
+        expect(field.getAttribute('dir')).toBe('auto');
+      }
+      // The selects offer fixed English options, so they keep the page's direction.
+      for (const label of selects) {
+        expect(labelledControl(label, HTMLSelectElement).hasAttribute('dir')).toBe(false);
+      }
+    },
+  );
 });

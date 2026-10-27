@@ -39,9 +39,11 @@ export interface DetailsViewProps {
   id: string;
 }
 
+// Default-ignorable code points are matched too: variation selectors, the combining grapheme joiner and the
+// Hangul fillers are marks or letters, not format characters, yet they render as nothing.
 // TAB and LF are left out because the chip's pre-wrap white space already shows them as a gap or a line
-// break. The `u` flag matches whole code points, so an astral format character becomes one escape, not two.
-const INVISIBLE_CODE_POINTS = /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+// break. The `u` flag matches whole code points, so an astral code point becomes one escape, not two.
+const INVISIBLE_CODE_POINTS = /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 
 function escapeInvisibleCodePoints(id: string): string {
   return id.replace(INVISIBLE_CODE_POINTS, (match) => {
@@ -76,8 +78,9 @@ export function DetailsView({ id }: DetailsViewProps) {
   if (request === undefined) {
     // The decoded ID may carry spaces, as in " REQ-0001", which plain heading text would collapse into
     // what reads as an existing ID; the code element keeps them and shows where the ID starts and ends,
-    // and dir="auto" gives it its own base direction, isolated from the sentence around it. Invisible and
-    // format code points show as ⟨U+XXXX⟩ escapes: unseen, a zero-width one would let the ID pass for an
+    // and dir="auto" gives it its own base direction, isolated from the sentence around it. Invisible,
+    // format and default-ignorable code points (variation selectors, the combining grapheme joiner, Hangul
+    // fillers) show as ⟨U+XXXX⟩ escapes: those that render as nothing would, unseen, let the ID pass for an
     // existing one, and a bidi control would reorder it.
     return (
       <NotFound
