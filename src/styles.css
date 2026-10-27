@@ -217,6 +217,20 @@ thead th {
   padding-inline: 1.5rem;
 }
 
+/* Out of flow, so it adds no gap to the shell, and clipped away until it
+   takes keyboard focus; clip-path keeps it in the tab order and the
+   accessibility tree. */
+.skip-link {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 2;
+}
+
+.skip-link:not(:focus) {
+  clip-path: inset(50%);
+}
+
 .demo-banner {
   padding-block: 0.75rem;
   padding-inline: 1rem;
