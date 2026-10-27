@@ -44,9 +44,12 @@ dd {
   margin: 0;
 }
 
+/* Headings can show a request ID of any length, typed into the hash or read
+   from storage, so an unbroken one wraps instead of widening the page. */
 h1 {
   font-size: 1.75rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 h2 {
@@ -157,9 +160,10 @@ a:active {
   }
 }
 
-/* Tables and field values keep line breaks typed into descriptions and notes.
-   Cells break only words too long for their column, since breaking anywhere
-   lets the table squeeze short words apart; field values may break anywhere. */
+/* Tables and field values keep the line breaks and runs of spaces as stored,
+   so they show user text exactly as the edit form holds it. Cells break only
+   words too long for their column, since breaking anywhere lets the table
+   squeeze short words apart; field values may break anywhere. */
 table {
   border-collapse: collapse;
 }
@@ -177,7 +181,7 @@ td {
 th,
 td,
 dd {
-  white-space: pre-line;
+  white-space: pre-wrap;
 }
 
 dd {
@@ -343,6 +347,18 @@ thead th {
 
 .view {
   gap: 1.25rem;
+}
+
+/* An unknown ID is shown as typed: spaces stay visible instead of collapsing,
+   and the box marks where the ID starts and ends, so " REQ-0001" cannot pass
+   for REQ-0001. It wraps with its heading. */
+.unknown-id {
+  padding-inline: 0.25em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius);
 }
 
 /* Details: label and value columns; each row wrapper joins them via subgrid,

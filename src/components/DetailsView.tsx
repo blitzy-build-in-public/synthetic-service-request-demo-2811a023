@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { availableActions } from '../domain/transitions';
 import { latestInformationRequest } from '../domain/audit';
 import type { EditFields, ServiceRequest } from '../domain/model';
@@ -11,8 +12,11 @@ import { formatBlank, formatStatusCell, formatTimestamp } from './format';
 
 /** Props for `NotFound`. */
 export interface NotFoundProps {
-  /** The message to show, e.g. "Request REQ-9999 was not found." or "Page not found.". */
-  message: string;
+  /**
+   * The heading content: plain text such as "Page not found.", or markup whose text reads
+   * "Request REQ-9999 was not found." with the unknown ID set apart.
+   */
+  message: ReactNode;
 }
 
 /** A not-found message with a link back to the request list. */
@@ -63,7 +67,18 @@ export function DetailsView({ id }: DetailsViewProps) {
 
   const request = requests.find((candidate) => candidate.id === id);
   if (request === undefined) {
-    return <NotFound message={`Request ${id} was not found.`} />;
+    // The decoded ID may carry spaces, as in " REQ-0001", which plain heading text would collapse into
+    // what reads as an existing ID; the code element keeps them and shows where the ID starts and ends,
+    // and dir="auto" gives it its own base direction, isolated from the sentence around it.
+    return (
+      <NotFound
+        message={
+          <>
+            Request <code className="unknown-id" dir="auto">{id}</code> was not found.
+          </>
+        }
+      />
+    );
   }
 
   // The domain alone decides whether Edit is offered; no role or status is compared here.
@@ -148,21 +163,24 @@ export function DetailsView({ id }: DetailsViewProps) {
           <div>
             <dt>Requester name</dt>
             <dd aria-live="polite">
-              {formatBlank(request.requesterName)}
+              {/* User text takes its base direction from its own first strong character, so right-to-left
+                  text reads and aligns right to left, while an em dash has none and stays left to right.
+                  Only the value is marked, so the submit message beside it keeps the page's direction. */}
+              <span dir="auto">{formatBlank(request.requesterName)}</span>
               {submitError('requesterName')}
             </dd>
           </div>
           <div>
             <dt>Request type</dt>
             <dd aria-live="polite">
-              {formatBlank(request.requestType)}
+              <span dir="auto">{formatBlank(request.requestType)}</span>
               {submitError('requestType')}
             </dd>
           </div>
           <div>
             <dt>Description</dt>
             <dd aria-live="polite">
-              {formatBlank(request.description)}
+              <span dir="auto">{formatBlank(request.description)}</span>
               {submitError('description')}
             </dd>
           </div>
@@ -185,7 +203,7 @@ export function DetailsView({ id }: DetailsViewProps) {
           {request.status === 'Waiting for Information' && (
             <div>
               <dt>Reason for information request</dt>
-              <dd>{formatBlank(latestInformationRequest(request))}</dd>
+              <dd dir="auto">{formatBlank(latestInformationRequest(request))}</dd>
             </div>
           )}
         </dl>
@@ -238,7 +256,7 @@ export function DetailsView({ id }: DetailsViewProps) {
               <td>{entry.action}</td>
               <td>{formatStatusCell(entry.fromStatus)}</td>
               <td>{formatStatusCell(entry.toStatus)}</td>
-              <td>{formatBlank(entry.note)}</td>
+              <td dir="auto">{formatBlank(entry.note)}</td>
             </tr>
           ))}
         </tbody>

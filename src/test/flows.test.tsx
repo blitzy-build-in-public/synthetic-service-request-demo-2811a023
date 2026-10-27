@@ -832,6 +832,15 @@ describe('UI edge cases', () => {
     expect(screen.getByRole('link', { name: 'Back to list' }).getAttribute('href')).toBe('#/');
   });
 
+  // " REQ-0001" is not REQ-0001, so the message keeps the ID whole, leading space included, in its own element.
+  it('a space-padded unknown ID is reported in a code element that keeps the space', () => {
+    renderApp({ hash: '#/requests/%20REQ-0001' });
+    expect(viewHeading()).toBe('Request  REQ-0001 was not found.');
+    const code = screen.getByRole('heading', { level: 1 }).querySelector('code');
+    expect(code?.textContent).toBe(' REQ-0001');
+    expect(code?.getAttribute('dir')).toBe('auto');
+  });
+
   it.each<OverLengthCase>([
     {
       label: 'Requester name',
@@ -1536,5 +1545,41 @@ describe('Accessibility announcements and focus', () => {
 
     expect(labelledControl(REASON_FORM.label, HTMLTextAreaElement).value).toBe('');
     expect(replacement.getAttribute('aria-expanded')).toBe('true');
+  });
+});
+
+describe('User text direction', () => {
+  it('Arabic-first user text takes its own base direction in the details values and the list name cell', () => {
+    const { store } = renderApp();
+    const fields: CreateFields = {
+      requesterName: 'اختبار ريلي',
+      requestType: 'General Question',
+      description: 'هذا طلب تجريبي للمكتب.\nالسطر الثاني رقم 2026.',
+    };
+    createRequest(fields);
+    expect(viewHeading()).toBe('REQ-0004');
+    const request = storedRequest(store, 'REQ-0004');
+    expect([request.requesterName, request.requestType, request.description]).toEqual([
+      fields.requesterName,
+      fields.requestType,
+      fields.description,
+    ]);
+
+    // Only the value is marked, so a submit message the row may also hold keeps the page's direction.
+    for (const [label, stored] of [
+      ['Requester name', request.requesterName],
+      ['Request type', request.requestType],
+      ['Description', request.description],
+    ] as const) {
+      const row = getDetailsValue(label);
+      expect(row.hasAttribute('dir')).toBe(false);
+      expect(row.querySelector('[dir="auto"]')?.textContent).toBe(stored);
+    }
+
+    goToHash('#/');
+    const listRowElement = within(listTable()).getByRole('link', { name: 'REQ-0004' }).closest('tr');
+    const nameCell = listRowElement?.cells[LIST_COLUMN.requesterName];
+    expect(nameCell?.textContent).toBe(request.requesterName);
+    expect(nameCell?.getAttribute('dir')).toBe('auto');
   });
 });

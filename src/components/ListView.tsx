@@ -106,7 +106,7 @@ export function ListView() {
                 <td>
                   <a href={hrefForRequest(request.id)}>{request.id}</a>
                 </td>
-                <td>{formatBlank(request.requesterName)}</td>
+                <td dir="auto">{formatBlank(request.requesterName)}</td>
                 <td>{formatBlank(request.requestType)}</td>
                 <td>{request.priority}</td>
                 <td>{request.status}</td>
