@@ -64,9 +64,9 @@ function syntaxOf(path: string): SourceSyntax {
   return path.endsWith('.tsx') ? 'tsx' : 'ts';
 }
 
-/** The 1-based line of `source` that `index` falls on. */
+/** The 1-based line of `source` that `index` falls on; a CRLF, LF, CR, U+2028 or U+2029 each ends one line. */
 function lineOf(source: string, index: number): number {
-  return source.slice(0, index).split('\n').length;
+  return source.slice(0, index).split(/\r\n|[\n\r\u2028\u2029]/).length;
 }
 
 /** The error for a construct opened at `start` and still open at the end of `source`. */
@@ -75,10 +75,17 @@ function unterminated(construct: string, source: string, start: number): Error {
 }
 
 const WHITESPACE = /\s/;
-const LINE_BREAK = /[\n\r]/;
+// ECMAScript's line terminators. Each ends a line comment, none may stand in a regular expression literal, and
+// one before a `++`, `--` or `!` makes it prefix.
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+// The line breaks a quoted string cannot hold unescaped. Since ES2019 a script string may hold U+2028 and U+2029,
+// and CSS reads neither as a newline, so a string in either grammar runs on past them.
+const STRING_LINE_BREAK = /[\n\r]/;
 const DIGIT = /\d/;
 const IDENTIFIER_START = /[A-Za-z_$\u0080-\uffff]/;
-const IDENTIFIER_PART = /[\w$\u0080-\uffff]/;
+// U+2028 and U+2029 are line terminators, so a word ends before them: one that took them in would hide the line
+// break after it from the postfix decision.
+const IDENTIFIER_PART = /[\w$\u0080-\u2027\u202a-\uffff]/;
 const NUMBER_PART = /[\w$.]/;
 const CSS_NAME_PART = /[\w\-\u0080-\uffff]/;
 
@@ -92,7 +99,7 @@ function endOfString(source: string, start: number, construct: string): number {
   const quote = source.charAt(start);
   let index = start + 1;
   for (let char = source.charAt(index); char !== quote; char = source.charAt(index)) {
-    if (char === '' || LINE_BREAK.test(char)) {
+    if (char === '' || STRING_LINE_BREAK.test(char)) {
       throw unterminated(construct, source, start);
     }
     index += char === '\\' ? escapeLength(source, index) : 1;
@@ -154,8 +161,12 @@ function stripScriptComments(source: string, jsx: boolean): string {
   /** Drops the comment at `index`, if one starts there; a block comment leaves a space between its neighbours. */
   function skipComment(): boolean {
     if (source.startsWith('//', index)) {
-      const end = source.indexOf('\n', index);
-      index = end === -1 ? source.length : end;
+      // Any line terminator ends it, not only LF: code after a CR, U+2028 or U+2029 runs. The terminator stays, so
+      // a CRLF reaches the output whole.
+      index += 2;
+      while (index < source.length && !LINE_BREAK.test(source.charAt(index))) {
+        index += 1;
+      }
       return true;
     }
     if (!source.startsWith('/*', index)) {
@@ -1055,6 +1066,97 @@ describe('checker helpers', () => {
   ])('stripComments as %s throws on %j rather than scan it out of step', (syntax, source, message) => {
     expect(() => stripComments(source, syntax)).toThrow(message);
   });
+
+  // Every ECMAScript line terminator but LF, which the fixtures above use, plus CRLF, whose CR must end a line
+  // comment without splitting the pair. Written as escapes, so this file holds none of them raw.
+  const LINE_TERMINATORS: ReadonlyArray<[label: string, terminator: string]> = [
+    ['CR', '\r'],
+    ['CRLF', '\r\n'],
+    ['U+2028', '\u2028'],
+    ['U+2029', '\u2029'],
+  ];
+
+  // The .tsx source puts its line comment inside a JSX tag, which the scanner reads apart from other code.
+  it.each(
+    LINE_TERMINATORS.flatMap(([label, terminator]): Array<[SourceSyntax, string, string, string, string]> => [
+      ['ts', label, terminator, 'export const probe = 1; ', "fetch('/x');"],
+      ['tsx', label, terminator, 'export const Probe = () => <p ', "title={fetch('/x')}>x</p>;"],
+    ]),
+  )(
+    'stripComments as %s ends a line comment at a %s and keeps the code after it',
+    (syntax, _label, terminator, before, after) => {
+      const code = stripComments(`${before}// comment${terminator}${after}`, syntax);
+      expect(code).toBe(`${before}${terminator}${after}`);
+      expect(bannedUses(code, PRODUCTION_BANS)).toEqual(['fetch(']);
+    },
+  );
+
+  // DOMAIN_BANS stands in for the localStorage owner check here: both match the bare name.
+  it.each<[string, string, readonly Ban[], string[]]>([
+    ['CR', '// note\rconst jar = sessionStorage;', PRODUCTION_BANS, ['sessionStorage']],
+    ['CRLF', '// note\r\nlocalStorage.clear();', DOMAIN_BANS, ['localStorage']],
+    ['U+2028', '// note\u2028const jar = sessionStorage;', PRODUCTION_BANS, ['sessionStorage']],
+    ['U+2029', '// note\u2029localStorage.clear();', DOMAIN_BANS, ['localStorage']],
+  ])('a line comment ended by a %s hides no storage API from the bans', (_label, source, bans, expected) => {
+    expect(bannedUses(stripComments(source, 'ts'), bans)).toEqual(expected);
+  });
+
+  it.each(LINE_TERMINATORS)(
+    'a line comment ended by a %s hides no import from the layering check',
+    (_label, terminator) => {
+      const rule = IMPORT_RULES.find(({ layers }) => layers.includes('components'));
+      if (rule === undefined) {
+        throw new Error('IMPORT_RULES holds no rule for the components layer.');
+      }
+      const specifier = '../storage/localStore';
+      const source = `// comment${terminator}import { STORAGE_KEY } from '${specifier}';`;
+      expect(importSpecifiers(source, 'ts')).toEqual([specifier]);
+      expect(importViolations('/src/components/Probe.tsx', source, rule)).toEqual([
+        `'${specifier}' resolves to /src/storage/localStore, outside /src/domain/, /src/state/, /src/components/`,
+      ]);
+    },
+  );
+
+  it.each<[SourceSyntax, string, string]>([
+    ['ts', 'U+2028', "const s = 'a\u2028b';"],
+    ['ts', 'U+2029', 'const s = "a\u2029b";'],
+    ['css', 'U+2028', "a::before { content: 'a\u2028b'; }"],
+    ['css', 'U+2029', 'a::before { content: "a\u2029b"; }'],
+  ])('stripComments as %s keeps a string holding a %s verbatim', (syntax, _label, source) => {
+    expect(stripComments(source, syntax)).toBe(source);
+  });
+
+  it.each(LINE_TERMINATORS)(
+    'stripComments throws on a regular expression literal a %s splits',
+    (_label, terminator) => {
+      expect(() => stripComments(`const a = /line${terminator}break/;`, 'ts')).toThrow(
+        /Unterminated regular expression literal/,
+      );
+    },
+  );
+
+  // The `!` opening the second line is prefix, so the `/` after it opens a regular expression, and the `/*` in that
+  // opens no comment. The line break before the `!` may stand alone or sit inside a block comment.
+  it.each(
+    LINE_TERMINATORS.flatMap(([label, terminator]): Array<[string, string, string, string]> => [
+      [label, terminator, terminator, terminator],
+      [`${label} in a block comment`, terminator, `/* gap${terminator}*/`, ' '],
+    ]),
+  )('a %s before a `!` opening a line hides no code behind a regular expression', (_label, terminator, gap, kept) => {
+    const rest = ['!/[/*]/.test(mark);', 'fetch(mark);', '/[*/]/.test(mark);'].join(terminator);
+    const code = stripComments(`const ready = value${gap}${rest}`, 'ts');
+    expect(code).toBe(`const ready = value${kept}${rest}`);
+    expect(bannedUses(code, PRODUCTION_BANS)).toEqual(['fetch(']);
+  });
+
+  it.each(LINE_TERMINATORS)(
+    'stripComments counts a %s as one line break in the line an error names',
+    (_label, terminator) => {
+      expect(() => stripComments(`const a = 1;${terminator}const b = 'open`, 'ts')).toThrow(
+        /^Unterminated string literal starting on line 2\.$/,
+      );
+    },
+  );
 
   it.each<[string, string[]]>([
     [
