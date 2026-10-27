@@ -35,7 +35,7 @@ export function serializeEnvelope(requests: readonly ServiceRequest[]): string {
 }
 
 const REQUEST_ID_PATTERN = /^REQ-\d{4,}$/;
-const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const ISO_TIMESTAMP_PATTERN = /^(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const QUOTA_EXCEEDED_NAME = 'QuotaExceededError';
 const LEGACY_QUOTA_EXCEEDED_CODE = 22;
 
@@ -49,8 +49,10 @@ function isArray(value: unknown): value is readonly unknown[] {
   return Array.isArray(value);
 }
 
-// Timestamps come from `Date.prototype.toISOString`. The round trip also rejects values that fit the
-// shape but name no real instant, such as 30 February or hour 24, which `Date.parse` silently rolls over.
+// Timestamps come from `Date.prototype.toISOString`, which writes years outside 0 to 9999 with a sign and
+// six digits, so the shape admits both forms. The round trip rejects what the shape cannot: values that name
+// no real instant, such as 30 February, hour 24 or a time past the Date range, which `Date.parse` rolls over
+// or refuses, and non-canonical spellings such as `+002026` or `-000000` that `toISOString` never writes.
 function isIsoTimestamp(value: unknown): value is string {
   if (typeof value !== 'string' || !ISO_TIMESTAMP_PATTERN.test(value)) {
     return false;

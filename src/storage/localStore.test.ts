@@ -168,6 +168,25 @@ describe('storage key and envelope', () => {
     expect(adapter.load()).toStrictEqual({ kind: 'ok', requests });
   });
 
+  // A clock outside the years 0 to 9999 makes `toISOString` write a signed six-digit year; the
+  // last two values are the latest and earliest instants a Date can hold.
+  it.each([
+    '+010000-01-01T00:00:00.000Z',
+    '-000001-01-01T00:00:00.000Z',
+    '+275760-09-13T00:00:00.000Z',
+    '-271821-04-20T00:00:00.000Z',
+  ])('round-trips the expanded-year %s in lastUpdated and the audit entry', (timestamp) => {
+    const requests = [
+      makeDraft({ lastUpdated: timestamp, auditHistory: [{ ...CREATED_ENTRY, timestamp }] }),
+    ];
+    const storage = createMemoryStorage();
+    const adapter = createLocalStorageAdapter(() => storage);
+
+    expect(new Date(timestamp).toISOString()).toBe(timestamp);
+    expect(adapter.save(requests)).toStrictEqual({ ok: true });
+    expect(adapter.load()).toStrictEqual({ kind: 'ok', requests });
+  });
+
   it('stores the compact envelope under the key and writes no other key', () => {
     const requests = createSampleRequests();
     const storage = createMemoryStorage();
@@ -289,6 +308,19 @@ describe('request and audit entry shape on load', () => {
       request: { ...makeDraft(), auditHistory: ['Created'] },
     },
     { name: 'a request that is not an object', request: 'REQ-0001' },
+    // Each fits a loose ISO shape but is text `toISOString` never writes: a signed four-digit
+    // year, a negative zero year, an expanded year missing its sign or sixth digit, and an
+    // instant one millisecond past the Date range.
+    ...[
+      '+002026-02-01T09:00:00.000Z',
+      '-000000-01-01T00:00:00.000Z',
+      '010000-01-01T00:00:00.000Z',
+      '+10000-01-01T00:00:00.000Z',
+      '+275760-09-13T00:00:00.001Z',
+    ].flatMap((timestamp) => [
+      { name: `lastUpdated ${timestamp}`, request: draftWithField('lastUpdated', timestamp) },
+      { name: `an entry at ${timestamp}`, request: draftWithEntryField('timestamp', timestamp) },
+    ]),
   ])('rejects the whole value for $name as unreadable', ({ request }) => {
     expect(loadRaw(envelopeWith([request]))).toStrictEqual({ kind: 'unreadable' });
   });
