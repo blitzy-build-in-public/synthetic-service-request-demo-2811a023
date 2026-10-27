@@ -131,6 +131,25 @@ textarea {
   }
 }
 
+/* Pressed states sit outside the hover query so touch and keyboard presses
+   show them, and after the hover rules so they win while hovered. Disabled
+   buttons are excluded so they keep looking disabled; the border is not
+   transitioned, so even a quick click shows it. */
+button:not(:disabled, [aria-disabled='true']):active {
+  background-color: var(--color-border);
+  border-color: var(--color-text);
+}
+
+a:active {
+  color: var(--color-text);
+  text-decoration-thickness: 0.125em;
+}
+
+.app-title:active {
+  text-decoration: underline;
+  text-decoration-thickness: 0.125em;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   button,
   a {
