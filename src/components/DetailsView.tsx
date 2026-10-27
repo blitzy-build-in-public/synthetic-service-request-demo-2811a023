@@ -141,7 +141,9 @@ export function DetailsView({ id }: DetailsViewProps) {
         />
       ) : (
         // The three rows Submit checks are polite live regions, so a submit message inserted beside a
-        // field is announced while focus stays on the Submit button.
+        // field is announced while focus stays on the Submit button. The Status row is one as well, and
+        // atomic, so a transition that leaves the view open is announced as "Status <new status>"; it
+        // sits outside the keyed ActionPanel, which a transition remounts.
         <dl className="field-list">
           <div>
             <dt>Requester name</dt>
@@ -168,7 +170,7 @@ export function DetailsView({ id }: DetailsViewProps) {
             <dt>Priority</dt>
             <dd>{request.priority}</dd>
           </div>
-          <div>
+          <div aria-live="polite" aria-atomic="true">
             <dt>Status</dt>
             <dd>{request.status}</dd>
           </div>
@@ -189,7 +191,10 @@ export function DetailsView({ id }: DetailsViewProps) {
         </dl>
       )}
       {/* Hidden while editing, so Submit cannot run against the stored fields mid-edit. The key remounts
-          the panel on any role or status change, which closes an open note form. */}
+          the panel on any role or status change, which closes an open note form. A remount after an
+          accepted transition also removes the focused control, so focus moves to the heading, which
+          stays mounted. It moves there from the action itself rather than on any status change, so a
+          role switch or a confirmed reset keeps focus on the control the user is on. */}
       {!formOpen && (
         <ActionPanel
           key={`${role}:${request.status}`}
@@ -201,10 +206,16 @@ export function DetailsView({ id }: DetailsViewProps) {
           onSubmitErrors={(errors) => {
             setSubmitFeedback({ request, errors });
           }}
+          onTransition={() => {
+            headingRef.current?.focus();
+          }}
         />
       )}
       <h2 id={auditHeadingId}>Audit history</h2>
-      <table className="data-table" aria-labelledby={auditHeadingId}>
+      {/* On narrow screens the table scrolls sideways on its own, and no cell holds a focusable control.
+          Safari never focuses a scroll container, so the table takes focus itself, letting keyboard users
+          scroll to the columns off screen, the Note column included. */}
+      <table className="data-table" aria-labelledby={auditHeadingId} tabIndex={0}>
         <thead>
           <tr>
             <th scope="col">Timestamp</th>

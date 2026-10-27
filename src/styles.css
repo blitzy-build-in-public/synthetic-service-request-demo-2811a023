@@ -393,6 +393,14 @@ thead th {
   color: var(--color-error);
 }
 
+/* A field's message slot is a live region rendered before any message, so
+   the message a failed save inserts is announced. While empty it is out of
+   flow and adds no gap under its control; display: none would also drop it
+   from the accessibility tree, and the message would go unannounced. */
+.field-error-slot:empty {
+  position: absolute;
+}
+
 /* Empty state and supporting copy */
 .empty-state {
   align-items: center;

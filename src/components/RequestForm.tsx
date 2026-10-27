@@ -37,8 +37,8 @@ type FormField = Exclude<keyof FieldErrors, 'note'>;
 
 /**
  * Create or edit form for a request. Values reach `onSave` exactly as typed: the domain trims and
- * validates them, and a blank draft is valid to save. Returned messages show below their fields
- * while the inputs keep their text; the parent closes the form when the save succeeds.
+ * validates them, and a blank draft is valid to save. Returned messages show below their fields, and
+ * are announced, while the inputs keep their text; the parent closes the form when the save succeeds.
  */
 export function RequestForm(props: RequestFormProps) {
   // `props` stays whole so `props.mode` narrows `initialValues` and `onSave` together.
@@ -47,6 +47,7 @@ export function RequestForm(props: RequestFormProps) {
   const [description, setDescription] = useState(props.initialValues.description);
   const [priority, setPriority] = useState(props.mode === 'edit' ? props.initialValues.priority : '');
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [saveAttempt, setSaveAttempt] = useState(0);
   const baseId = useId();
 
   const controlId = (field: FormField): string => `${baseId}-${field}`;
@@ -63,12 +64,20 @@ export function RequestForm(props: RequestFormProps) {
       ? { 'aria-invalid': undefined, 'aria-describedby': undefined }
       : { 'aria-invalid': true, 'aria-describedby': errorId(field) };
 
+  // Focus stays on the submit button, so a message must be announced. Assistive technology announces
+  // only changes inside a live region that already exists, so the slot renders with the form, before any
+  // message. It holds the message alone: around a control it would also announce typed text. The key
+  // re-inserts a message a later save returns again, so every failed save is announced.
   const errorMessage = (field: FormField) => {
     const message = messageFor(field);
-    return message === undefined ? null : (
-      <p id={errorId(field)} className="field-error">
-        {message}
-      </p>
+    return (
+      <div className="field-error-slot" aria-live="polite">
+        {message === undefined ? null : (
+          <p key={saveAttempt} id={errorId(field)} className="field-error">
+            {message}
+          </p>
+        )}
+      </div>
     );
   };
 
@@ -79,6 +88,7 @@ export function RequestForm(props: RequestFormProps) {
         ? props.onSave({ requesterName, requestType, description, priority })
         : props.onSave({ requesterName, requestType, description });
     setErrors(result ?? {});
+    setSaveAttempt((attempt) => attempt + 1);
   }
 
   // No maxLength, required, pattern or minLength: an over-length value must stay in the field and be

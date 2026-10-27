@@ -1,4 +1,5 @@
-// UI acceptance flows (AC1–AC4, AC6–AC8, AC10) and UI edge cases, driven through the rendered app.
+// UI acceptance flows (AC1–AC4, AC6–AC8, AC10), UI edge cases, and accessibility announcements and
+// focus, driven through the rendered app.
 // Reload persistence (AC5 and the AC10 reload step) lives in reload.test.tsx, and the exhaustive
 // transition grids in src/domain/transitions.test.ts.
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -421,6 +422,19 @@ describe('UI edge cases', () => {
     expect(screen.queryByRole('button', { name: 'New request' })).toBeNull();
   });
 
+  // Narrow screens scroll each table sideways, so the table itself must be a keyboard stop.
+  it.each([
+    ['#/', 'Service requests'],
+    ['#/requests/REQ-0001', 'Audit history'],
+  ])('at %s the "%s" table is in the tab order and takes keyboard focus', (hash, name) => {
+    renderApp({ hash });
+    const table = screen.getByRole('table', { name });
+    expect(table.tabIndex).toBe(0);
+
+    table.focus();
+    expect(document.activeElement).toBe(table);
+  });
+
   it.each([
     ['#/requests/REQ-9999', 'Request REQ-9999 was not found.'],
     ['#/settings', 'Page not found.'],
@@ -628,6 +642,231 @@ describe('UI edge cases', () => {
 
     expect(store.getState().requests).toEqual(createSampleRequests());
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+/** A note form: the request and role that offer it, the action that opens it, its field and its send button. */
+interface NoteFormCase {
+  readonly id: string;
+  readonly role: Role;
+  readonly action: string;
+  readonly label: string;
+  readonly send: string;
+}
+
+const REASON_FORM: NoteFormCase = {
+  id: 'REQ-0002',
+  role: 'Reviewer',
+  action: 'Request more information',
+  label: 'Reason',
+  send: 'Send reason',
+};
+
+const INFORMATION_FORM: NoteFormCase = {
+  id: 'REQ-0003',
+  role: 'Requester',
+  action: 'Supply information',
+  label: 'Supplied information',
+  send: 'Send information',
+};
+
+/** One accepted transition: where it starts, how it is pressed, and the status it leads to. */
+interface TransitionFocusCase {
+  readonly name: string;
+  readonly id: string;
+  readonly role: Role;
+  readonly run: () => void;
+  readonly status: string;
+}
+
+/** Focuses `button` before clicking it, as keyboard and pointer activation both do. */
+function press(button: HTMLElement): void {
+  button.focus();
+  fireEvent.click(button);
+}
+
+function actionButton(name: string): HTMLElement {
+  return within(actionsRegion()).getByRole('button', { name });
+}
+
+function pressSendNote(form: NoteFormCase): void {
+  press(actionButton(form.action));
+  fireEvent.change(screen.getByLabelText(form.label), { target: { value: 'A fictional note.' } });
+  press(screen.getByRole('button', { name: form.send }));
+}
+
+function renderNoteForm(form: NoteFormCase): void {
+  renderApp({ hash: `#/requests/${form.id}` });
+  switchRole(form.role);
+  press(actionButton(form.action));
+}
+
+/** The element directly after `control`, which must be its polite live message slot. */
+function messageSlot(control: HTMLElement): Element {
+  const slot = control.nextElementSibling;
+  if (slot === null || slot.getAttribute('aria-live') !== 'polite') {
+    throw new Error('The control is not directly followed by a polite live message slot.');
+  }
+  return slot;
+}
+
+describe('Accessibility announcements and focus', () => {
+  it.each([
+    { mode: 'create', hash: '#/', open: 'New request', save: 'Create draft' },
+    { mode: 'edit', hash: '#/requests/REQ-0001', open: 'Edit', save: 'Save changes' },
+  ])('the $mode form inserts a save error into a live slot that existed before the save', ({ hash, open, save }) => {
+    renderApp({ hash });
+    fireEvent.click(screen.getByRole('button', { name: open }));
+    const input = screen.getByLabelText('Requester name');
+    const slot = messageSlot(input);
+    expect(slot.childElementCount).toBe(0);
+
+    fireEvent.change(input, { target: { value: 'R'.repeat(81) } });
+    fireEvent.click(screen.getByRole('button', { name: save }));
+
+    expect(messageSlot(input)).toBe(slot);
+    const message = slot.firstElementChild;
+    expect(message?.id).toBe(input.getAttribute('aria-describedby'));
+    expect(message?.textContent).toBe('Requester name must be 80 characters or fewer.');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+
+    // A repeated failure inserts the message afresh, so it is announced again.
+    fireEvent.click(screen.getByRole('button', { name: save }));
+    expect(slot.firstElementChild).not.toBe(message);
+    expect(slot.firstElementChild?.id).toBe(message?.id);
+  });
+
+  it.each([
+    { ...REASON_FORM, text: '', message: 'Reason is required.' },
+    {
+      ...INFORMATION_FORM,
+      text: 'I'.repeat(1001),
+      message: 'Supplied information must be 1000 characters or fewer.',
+    },
+  ])('the $label form inserts "$message" into a live slot that existed before the send', (testCase) => {
+    renderNoteForm(testCase);
+    const field = screen.getByLabelText(testCase.label);
+    if (!(field instanceof HTMLTextAreaElement)) {
+      throw new Error(`The ${testCase.label} control is not a <textarea>.`);
+    }
+    const slot = messageSlot(field);
+    expect(slot.childElementCount).toBe(0);
+
+    fireEvent.change(field, { target: { value: testCase.text } });
+    fireEvent.click(screen.getByRole('button', { name: testCase.send }));
+
+    expect(messageSlot(field)).toBe(slot);
+    const message = slot.firstElementChild;
+    expect(message?.id).toBe(field.getAttribute('aria-describedby'));
+    expect(message?.textContent).toBe(testCase.message);
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(field.value).toBe(testCase.text);
+
+    fireEvent.click(screen.getByRole('button', { name: testCase.send }));
+    expect(slot.firstElementChild).not.toBe(message);
+  });
+
+  it('the Status row is one polite, atomic live region that stays mounted across a transition', () => {
+    renderApp({ hash: '#/requests/REQ-0002' });
+    switchRole('Reviewer');
+    const row = getDetailsValue('Status').parentElement;
+    expect(row?.getAttribute('aria-live')).toBe('polite');
+    expect(row?.getAttribute('aria-atomic')).toBe('true');
+
+    clickAction('Complete');
+
+    expect(getDetailsValue('Status').parentElement).toBe(row);
+    expect(detailsText('Status')).toBe('Completed');
+  });
+
+  it.each<TransitionFocusCase>([
+    {
+      name: 'Submit',
+      id: 'REQ-0001',
+      role: 'Requester',
+      run: () => {
+        press(actionButton('Submit'));
+      },
+      status: 'Submitted',
+    },
+    {
+      name: 'Start review',
+      id: 'REQ-0001',
+      role: 'Requester',
+      run: () => {
+        press(actionButton('Submit'));
+        switchRole('Reviewer');
+        press(actionButton('Start review'));
+      },
+      status: 'In Review',
+    },
+    {
+      name: 'Send reason',
+      id: REASON_FORM.id,
+      role: REASON_FORM.role,
+      run: () => {
+        pressSendNote(REASON_FORM);
+      },
+      status: 'Waiting for Information',
+    },
+    {
+      name: 'Send information',
+      id: INFORMATION_FORM.id,
+      role: INFORMATION_FORM.role,
+      run: () => {
+        pressSendNote(INFORMATION_FORM);
+      },
+      status: 'In Review',
+    },
+    {
+      name: 'Complete',
+      id: 'REQ-0002',
+      role: 'Reviewer',
+      run: () => {
+        press(actionButton('Complete'));
+      },
+      status: 'Completed',
+    },
+  ])('$name moves focus to the details heading once the panel remounts', ({ id, role, run, status }) => {
+    renderApp({ hash: `#/requests/${id}` });
+    switchRole(role);
+
+    run();
+
+    expect(detailsText('Status')).toBe(status);
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: id }));
+  });
+
+  it('a Submit refused by validation keeps focus on Submit', () => {
+    renderApp();
+    createRequest({ requesterName: 'Riley Test', requestType: 'Access Request', description: '' });
+    const submit = actionButton('Submit');
+
+    press(submit);
+
+    expect(within(getDetailsValue('Description')).queryByText('Description is required.')).not.toBeNull();
+    expect(document.activeElement).toBe(submit);
+  });
+
+  it.each([REASON_FORM, INFORMATION_FORM])('Cancel on the $label form returns focus to $action', (form) => {
+    renderNoteForm(form);
+    const opener = actionButton(form.action);
+
+    press(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByLabelText(form.label)).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('a role switch closes an open note form and leaves focus on the role switch', () => {
+    renderNoteForm(REASON_FORM);
+    const select = screen.getByLabelText(ROLE_LABEL);
+    select.focus();
+
+    fireEvent.change(select, { target: { value: 'Requester' } });
+
+    expect(screen.queryByLabelText(REASON_FORM.label)).toBeNull();
+    expect(document.activeElement).toBe(select);
   });
 });
 

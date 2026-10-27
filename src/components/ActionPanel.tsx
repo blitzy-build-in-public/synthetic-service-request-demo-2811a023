@@ -1,6 +1,6 @@
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 // React's SubmitEvent, not FormEvent: the pinned @types/react deprecates FormEvent and types onSubmit with SubmitEvent.
-import type { ChangeEvent, SubmitEvent } from 'react';
+import type { ChangeEvent, MouseEvent, SubmitEvent } from 'react';
 import { availableActions, isTerminal } from '../domain/transitions';
 import type { Command, TransitionRule } from '../domain/transitions';
 import type { Role, ServiceRequest } from '../domain/model';
@@ -17,6 +17,11 @@ export interface ActionPanelProps {
   onEdit: () => void;
   /** Receives Submit validation errors, or an empty object after a successful submit. */
   onSubmitErrors: (errors: FieldErrors) => void;
+  /**
+   * Called after the store accepts an action that changes this request's status; the parent's key then
+   * remounts this panel, removing the focused control, so the parent moves focus somewhere that stays.
+   */
+  onTransition: () => void;
 }
 
 type NoteField = NonNullable<TransitionRule['noteField']>;
@@ -63,20 +68,26 @@ function noteCommand(rule: TransitionRule, id: string, note: string): Command | 
  * Offers one control per transition-table row `availableActions` returns for the role and status, with
  * an inline note form for rows that need one. It decides nothing itself: the store's dispatch runs every
  * command through the domain, and a refusal is shown by the app shell. The parent keys the panel by role
- * and status, so a role switch or a completed transition remounts it and closes any open note form.
+ * and status, so a role switch or a completed transition remounts it and closes any open note form. Only
+ * an accepted transition calls `onTransition`, as a role switch leaves focus on the switch; cancelling a
+ * note form returns focus to the action button that opened it.
  */
-export function ActionPanel({ request, role, onEdit, onSubmitErrors }: ActionPanelProps) {
+export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransition }: ActionPanelProps) {
   const store = useAppStore();
   // Create belongs to the list view; a details panel only offers actions on this request.
   const rules = availableActions(role, request.status).filter((rule) => rule.action !== 'create');
   const [openRule, setOpenRule] = useState<TransitionRule | null>(null);
   const [noteText, setNoteText] = useState('');
   const [noteError, setNoteError] = useState<string | undefined>(undefined);
+  const [sendAttempt, setSendAttempt] = useState(0);
   const noteId = useId();
   const noteErrorId = `${noteId}-error`;
+  // Cancel unmounts its own focused button; the opener stays mounted, so focus returns there.
+  const noteOpenerRef = useRef<HTMLButtonElement | null>(null);
 
-  function handleAction(rule: TransitionRule) {
+  function handleAction(rule: TransitionRule, trigger: HTMLButtonElement) {
     if (rule.noteField !== null) {
+      noteOpenerRef.current = trigger;
       setOpenRule(rule);
       setNoteText('');
       setNoteError(undefined);
@@ -90,16 +101,21 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors }: ActionPan
         const result = store.dispatch({ type: 'submit', id: request.id });
         if (result.ok) {
           onSubmitErrors({});
+          onTransition();
         } else if (result.error.kind === 'validation') {
           onSubmitErrors(result.error.errors);
         }
         return;
       }
       case 'startReview':
-        store.dispatch({ type: 'startReview', id: request.id });
+        if (store.dispatch({ type: 'startReview', id: request.id }).ok) {
+          onTransition();
+        }
         return;
       case 'complete':
-        store.dispatch({ type: 'complete', id: request.id });
+        if (store.dispatch({ type: 'complete', id: request.id }).ok) {
+          onTransition();
+        }
         return;
       // Create is filtered out above, and the note actions open their form before this switch.
       case 'create':
@@ -127,9 +143,11 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors }: ActionPan
       setOpenRule(null);
       setNoteText('');
       setNoteError(undefined);
+      onTransition();
     } else if (result.error.kind === 'validation') {
       // The text stays exactly as typed so the user can correct it.
       setNoteError(result.error.errors.note);
+      setSendAttempt((attempt) => attempt + 1);
     }
   }
 
@@ -150,8 +168,8 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors }: ActionPan
             <button
               type="button"
               key={rule.action}
-              onClick={() => {
-                handleAction(rule);
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                handleAction(rule, event.currentTarget);
               }}
             >
               {rule.label}
@@ -174,11 +192,17 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors }: ActionPan
               aria-invalid={noteError ? 'true' : undefined}
               aria-describedby={noteError ? noteErrorId : undefined}
             />
-            {noteError ? (
-              <p id={noteErrorId} className="field-error">
-                {noteError}
-              </p>
-            ) : null}
+            {/* Focus stays on the send button, so the message must be announced: the live slot renders
+                with the form, before any message, and holds the message alone, since around the
+                textarea it would also announce typed text. The key re-inserts a repeated message, so
+                every failed send is announced. */}
+            <div className="field-error-slot" aria-live="polite">
+              {noteError ? (
+                <p key={sendAttempt} id={noteErrorId} className="field-error">
+                  {noteError}
+                </p>
+              ) : null}
+            </div>
           </div>
           <div className="button-row">
             <button type="submit">{copy.send}</button>
@@ -186,6 +210,7 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors }: ActionPan
               type="button"
               onClick={() => {
                 setOpenRule(null);
+                noteOpenerRef.current?.focus();
               }}
             >
               Cancel

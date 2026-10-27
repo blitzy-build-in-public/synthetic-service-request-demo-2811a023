@@ -87,7 +87,9 @@ export function ListView() {
           {createAffordance}
         </div>
       ) : (
-        <table className="data-table" aria-labelledby={headingId}>
+        // On narrow screens the table scrolls sideways on its own. Safari never focuses a scroll container,
+        // so the table takes focus itself, letting keyboard users scroll to the columns off screen.
+        <table className="data-table" aria-labelledby={headingId} tabIndex={0}>
           <thead>
             <tr>
               <th scope="col">ID</th>
