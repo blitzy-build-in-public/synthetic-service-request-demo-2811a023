@@ -474,6 +474,86 @@ describe('applyCommand execution grid', () => {
       });
     },
   );
+
+  // Each row's role may run its action from its status, so the note reaches validation.
+  const INVALID_NOTES: readonly {
+    readonly label: string;
+    readonly action: 'requestInfo' | 'supplyInfo';
+    readonly role: Role;
+    readonly status: Status;
+    readonly note: string;
+    readonly message: string;
+  }[] = [
+    {
+      label: 'an empty reason',
+      action: 'requestInfo',
+      role: 'Reviewer',
+      status: 'In Review',
+      note: '',
+      message: 'Reason is required.',
+    },
+    {
+      label: 'a whitespace-only reason',
+      action: 'requestInfo',
+      role: 'Reviewer',
+      status: 'In Review',
+      note: '  \t\n ',
+      message: 'Reason is required.',
+    },
+    {
+      label: 'a 1001-character reason',
+      action: 'requestInfo',
+      role: 'Reviewer',
+      status: 'In Review',
+      note: 'a'.repeat(1001),
+      message: 'Reason must be 1000 characters or fewer.',
+    },
+    {
+      label: 'empty supplied information',
+      action: 'supplyInfo',
+      role: 'Requester',
+      status: 'Waiting for Information',
+      note: '',
+      message: 'Supplied information is required.',
+    },
+    {
+      label: 'whitespace-only supplied information',
+      action: 'supplyInfo',
+      role: 'Requester',
+      status: 'Waiting for Information',
+      note: '  \t\n ',
+      message: 'Supplied information is required.',
+    },
+    {
+      label: '1001-character supplied information',
+      action: 'supplyInfo',
+      role: 'Requester',
+      status: 'Waiting for Information',
+      note: 'a'.repeat(1001),
+      message: 'Supplied information must be 1000 characters or fewer.',
+    },
+  ];
+
+  it.each(INVALID_NOTES)(
+    'rejects $label from the $role at $status as invalid and changes nothing',
+    ({ action, role, status, note, message }) => {
+      const requests = deepFreeze([makeRequest(status)]);
+      const snapshot = structuredClone(requests);
+      const existing = requestAt(requests, 0);
+
+      const error = expectRejected(
+        applyCommand(requests, { type: action, id: 'REQ-0001', note }, role, NOW),
+      );
+
+      expect(error).toStrictEqual({ kind: 'validation', errors: { note: message } });
+      expect(requests).toEqual(snapshot);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toBe(existing);
+      expect(existing.status).toBe(status);
+      expect(existing.lastUpdated).toBe(lastEntryOf(HISTORIES[status]).timestamp);
+      expect(existing.auditHistory).toStrictEqual(HISTORIES[status]);
+    },
+  );
 });
 
 describe('availableActions and isTerminal', () => {
@@ -744,7 +824,7 @@ describe('edit', () => {
             requesterName: '  Morgan Trial ',
             requestType: ' General Question',
             description: ' How does this fictional desk get booked? ',
-            priority: 'Urgent',
+            priority: '  Urgent ',
           },
         },
         'Requester',
@@ -936,6 +1016,62 @@ describe('full lifecycle history', () => {
     },
   ];
 
+  // The same steps with the edit saving Urgent, so every later command has to carry Urgent forward.
+  const URGENT_STEPS: readonly Step[] = STEPS.map((step): Step => {
+    if (step.command.type !== 'edit') {
+      return step;
+    }
+    return {
+      ...step,
+      command: { ...step.command, fields: { ...step.command.fields, priority: 'Urgent' } },
+    };
+  });
+
+  interface LifecycleRun {
+    /** The priority the edit saves. */
+    readonly label: Priority;
+    readonly steps: readonly Step[];
+    /** The priority after each step, in step order. */
+    readonly priorities: readonly Priority[];
+    /** The Edited entry's note, present only when the edit changed the priority. */
+    readonly editNote: string | undefined;
+  }
+
+  const LIFECYCLE_RUNS: readonly LifecycleRun[] = [
+    {
+      label: 'Normal',
+      steps: STEPS,
+      priorities: [
+        'Normal',
+        'Normal',
+        'Normal',
+        'Normal',
+        'Normal',
+        'Normal',
+        'Normal',
+        'Normal',
+        'Normal',
+      ],
+      editNote: undefined,
+    },
+    {
+      label: 'Urgent',
+      steps: URGENT_STEPS,
+      priorities: [
+        'Normal',
+        'Urgent',
+        'Urgent',
+        'Urgent',
+        'Urgent',
+        'Urgent',
+        'Urgent',
+        'Urgent',
+        'Urgent',
+      ],
+      editNote: 'Priority: Normal to Urgent',
+    },
+  ];
+
   interface StepOutcome {
     readonly step: Step;
     /** The history before the step, as the step's frozen input held it. */
@@ -945,9 +1081,9 @@ describe('full lifecycle history', () => {
     readonly request: ServiceRequest;
   }
 
-  function runLifecycle(): readonly StepOutcome[] {
+  function runLifecycle(steps: readonly Step[] = STEPS): readonly StepOutcome[] {
     let requests: readonly ServiceRequest[] = deepFreeze([]);
-    return STEPS.map((step) => {
+    return steps.map((step) => {
       const before = requests.find((request) => request.id === LIFECYCLE_ID)?.auditHistory ?? [];
       const beforeSnapshot = structuredClone(before);
       const accepted = expectAccepted(applyCommand(requests, step.command, step.role, step.now));
@@ -956,25 +1092,28 @@ describe('full lifecycle history', () => {
     });
   }
 
-  it('appends exactly one entry per step and keeps every earlier entry as it was', () => {
-    const outcomes = runLifecycle();
-    expect(outcomes).toHaveLength(9);
-    for (const { step, before, beforeSnapshot, request } of outcomes) {
-      const history = request.auditHistory;
-      expect(history).toHaveLength(beforeSnapshot.length + 1);
-      expect(history.slice(0, -1)).toEqual(beforeSnapshot);
-      before.forEach((entry, index) => {
-        expect(history[index]).toBe(entry);
-      });
-      expect(lastEntryOf(history)).toMatchObject({
-        timestamp: step.now,
-        role: step.role,
-        action: step.action,
-      });
-      expect(request.status).toBe(step.status);
-      expect(request.lastUpdated).toBe(step.now);
-    }
-  });
+  it.each(LIFECYCLE_RUNS)(
+    'appends exactly one entry per step and keeps every earlier entry as it was, editing to $label',
+    ({ steps }) => {
+      const outcomes = runLifecycle(steps);
+      expect(outcomes).toHaveLength(9);
+      for (const { step, before, beforeSnapshot, request } of outcomes) {
+        const history = request.auditHistory;
+        expect(history).toHaveLength(beforeSnapshot.length + 1);
+        expect(history.slice(0, -1)).toEqual(beforeSnapshot);
+        before.forEach((entry, index) => {
+          expect(history[index]).toBe(entry);
+        });
+        expect(lastEntryOf(history)).toMatchObject({
+          timestamp: step.now,
+          role: step.role,
+          action: step.action,
+        });
+        expect(request.status).toBe(step.status);
+        expect(request.lastUpdated).toBe(step.now);
+      }
+    },
+  );
 
   it('ends Completed with the full history in append order and no action for either role', () => {
     const final = lastOutcome(runLifecycle()).request;
@@ -1050,16 +1189,31 @@ describe('full lifecycle history', () => {
     expect(latestInformationRequest(lastOutcome(outcomes).request)).toBe(SECOND_REASON);
   });
 
-  it('keeps the priority Normal and changes no field outside Edit', () => {
-    for (const { request } of runLifecycle()) {
-      expect({
-        requesterName: request.requesterName,
-        requestType: request.requestType,
-        description: request.description,
-        priority: request.priority,
-      }).toEqual({ ...VALID_CREATE_FIELDS, priority: 'Normal' });
-    }
-  });
+  it.each(LIFECYCLE_RUNS)(
+    'keeps the priority $label after the edit and changes no field outside Edit',
+    ({ steps, priorities, editNote }) => {
+      const outcomes = runLifecycle(steps);
+      expect(
+        outcomes.map(({ request }) => ({
+          requesterName: request.requesterName,
+          requestType: request.requestType,
+          description: request.description,
+          priority: request.priority,
+        })),
+      ).toEqual(priorities.map((priority) => ({ ...VALID_CREATE_FIELDS, priority })));
+      expect(lastOutcome(outcomes).request.auditHistory.map((entry) => entry.note)).toEqual([
+        undefined,
+        editNote,
+        undefined,
+        undefined,
+        FIRST_REASON,
+        FIRST_ANSWER,
+        SECOND_REASON,
+        SECOND_ANSWER,
+        undefined,
+      ]);
+    },
+  );
 
   it('refuses Edit in every status after submission', () => {
     const submitted = runLifecycle().slice(2);

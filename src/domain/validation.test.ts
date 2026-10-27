@@ -112,8 +112,23 @@ describe('validateFieldsOnSave', () => {
     },
     { label: 'a 2000-character description', fields: { description: 'a'.repeat(2000) }, errors: {} },
     {
+      label: 'a 2000-character description padded with whitespace',
+      fields: { description: `${WHITESPACE}${'a'.repeat(2000)}${WHITESPACE}` },
+      errors: {},
+    },
+    {
       label: 'a 2001-character description',
       fields: { description: 'a'.repeat(2001) },
+      errors: { description: DESCRIPTION_TOO_LONG },
+    },
+    {
+      label: 'a description of 2000 astral characters (4000 UTF-16 units)',
+      fields: { description: ASTRAL.repeat(2000) },
+      errors: {},
+    },
+    {
+      label: 'a description of 2001 astral characters',
+      fields: { description: ASTRAL.repeat(2001) },
       errors: { description: DESCRIPTION_TOO_LONG },
     },
     { label: 'a blank request type', fields: { requestType: '' }, errors: {} },
@@ -144,6 +159,29 @@ describe('validateFieldsOnSave', () => {
 
       expect(result.ok).toBe(Object.keys(errors).length === 0);
       expect(errorsOf(result)).toStrictEqual(errors);
+    });
+
+    it.each<{ label: string; fields: Partial<CreateFields>; values: ValidatedCreateFields }>([
+      {
+        label: 'a name of 80 astral characters',
+        fields: { requesterName: ASTRAL.repeat(80) },
+        values: {
+          requesterName: ASTRAL.repeat(80),
+          requestType: 'Access Request',
+          description: 'Fictional test description.',
+        },
+      },
+      {
+        label: 'a description of 2000 astral characters',
+        fields: { description: ASTRAL.repeat(2000) },
+        values: {
+          requesterName: 'Riley Test',
+          requestType: 'Access Request',
+          description: ASTRAL.repeat(2000),
+        },
+      },
+    ])('stores $label exactly as given', ({ fields, values }) => {
+      expect(valuesOf(validate(fields))).toMatchObject(values);
     });
 
     it.each([
@@ -186,17 +224,19 @@ describe('validateFieldsOnSave', () => {
     });
   });
 
-  it.each([{ priority: 'Normal' }, { priority: 'Urgent' }])(
-    'accepts and returns the priority $priority on edit',
-    ({ priority }) => {
-      expect(valuesOf(validateFieldsOnSave({ ...VALID_EDIT, priority }))).toStrictEqual({
-        requesterName: 'Riley Test',
-        requestType: 'Access Request',
-        description: 'Fictional test description.',
-        priority,
-      });
-    },
-  );
+  it.each([
+    { label: 'Normal', raw: 'Normal', expected: 'Normal' },
+    { label: 'Urgent', raw: 'Urgent', expected: 'Urgent' },
+    { label: 'Normal padded with spaces', raw: '  Normal  ', expected: 'Normal' },
+    { label: 'Urgent padded with whitespace', raw: ' Urgent\t', expected: 'Urgent' },
+  ])('accepts the priority $label on edit and returns it trimmed', ({ raw, expected }) => {
+    expect(valuesOf(validateFieldsOnSave({ ...VALID_EDIT, priority: raw }))).toStrictEqual({
+      requesterName: 'Riley Test',
+      requestType: 'Access Request',
+      description: 'Fictional test description.',
+      priority: expected,
+    });
+  });
 
   it.each([
     { label: 'an unknown priority', priority: 'High' },
@@ -265,11 +305,36 @@ describe('validateForSubmission', () => {
       fields: { requesterName: 'a'.repeat(80), description: 'a'.repeat(2000) },
       errors: {},
     },
+    {
+      label: 'a name of 80 astral characters (160 UTF-16 units)',
+      fields: { requesterName: ASTRAL.repeat(80) },
+      errors: {},
+    },
+    {
+      label: 'a description of 2000 astral characters (4000 UTF-16 units)',
+      fields: { description: ASTRAL.repeat(2000) },
+      errors: {},
+    },
     ...REQUEST_TYPES.map((requestType) => ({
       label: `the request type ${requestType}`,
       fields: { requestType },
       errors: {},
     })),
+    {
+      label: 'a valid request type padded with whitespace',
+      fields: { requestType: '\tEquipment Request  ' },
+      errors: {},
+    },
+    {
+      label: 'an 80-character name padded with spaces',
+      fields: { requesterName: `   ${'a'.repeat(80)}   ` },
+      errors: {},
+    },
+    {
+      label: 'a 2000-character description padded with whitespace',
+      fields: { description: `${WHITESPACE}${'a'.repeat(2000)}${WHITESPACE}` },
+      errors: {},
+    },
     { label: 'a blank name', fields: { requesterName: '' }, errors: { requesterName: NAME_REQUIRED } },
     {
       label: 'a whitespace-only name',
@@ -314,6 +379,16 @@ describe('validateForSubmission', () => {
     {
       label: 'a 2001-character description',
       fields: { description: 'a'.repeat(2001) },
+      errors: { description: DESCRIPTION_TOO_LONG },
+    },
+    {
+      label: 'a name of 81 astral characters',
+      fields: { requesterName: ASTRAL.repeat(81) },
+      errors: { requesterName: NAME_TOO_LONG },
+    },
+    {
+      label: 'a description of 2001 astral characters',
+      fields: { description: ASTRAL.repeat(2001) },
       errors: { description: DESCRIPTION_TOO_LONG },
     },
     {
