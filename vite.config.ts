@@ -9,5 +9,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // Vitest empties every CSS request it is not told to process, `?raw` ones included, which would leave
+    // src/test/architecture.test.ts scanning a blank stylesheet. Matching only `?raw` requests hands them to
+    // Vite's raw loader unchanged; ordinary CSS imports in tests stay empty.
+    css: { include: [/[?&]raw(?:&|$)/] },
   },
 });
