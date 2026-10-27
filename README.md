@@ -10,7 +10,7 @@ Every view shows this banner:
 
 - **Fictional data.** All data — the sample requests, the test fixtures and this documentation — is fictional. Real names, contact details and personal data do not belong in it.
 - **Storage.** Everything is stored in the browser's local storage under one key, `service-request-demo.v1`, holding `{ "version": 1, "requests": [...] }`. The app writes it after each successful change and reads it on startup. Nothing is sent anywhere.
-- **First run.** With no stored data, the app shows three sample requests in memory — `REQ-0001` (Alex Example, Draft), `REQ-0002` (Jordan Sample, In Review) and `REQ-0003` (Casey Placeholder, Waiting for Information) — and writes them only with the first successful change.
+- **First run.** With no stored data, the app shows three sample requests in memory — `REQ-0001` (Alex Example, Draft), `REQ-0002` (Jordan Sample, In Review) and `REQ-0003` (Casey Placeholder, Waiting for Information) — and writes them only with the first successful change or confirmed reset.
 - **Reset.** The header button "Reset demo data" asks for confirmation. "Confirm reset" replaces all stored data with the three sample requests; "Cancel" changes nothing.
 - **Storage problems.** Stored data that cannot be read, or that uses an unsupported version, is left untouched, and a notice offers "Reset to sample data". The stored value is replaced only when you confirm a reset or complete a successful change. If storage is unavailable or full, the app keeps working in memory and warns that changes will not persist after this session.
 
