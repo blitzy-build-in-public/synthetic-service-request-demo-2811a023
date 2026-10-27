@@ -1225,6 +1225,7 @@ describe('full lifecycle history', () => {
     ]);
     for (const { request } of submitted) {
       const requests = deepFreeze([request]);
+      const snapshot = structuredClone(requests);
       const error = expectRejected(
         applyCommand(
           requests,
@@ -1241,7 +1242,8 @@ describe('full lifecycle history', () => {
         kind: 'refused',
         message: `Edit is not available to the Requester while the request is ${request.status}.`,
       });
-      expect(request.priority).toBe('Normal');
+      expect(requests).toEqual(snapshot);
+      expect(requests[0]).toBe(request);
     }
   });
 
@@ -1358,24 +1360,41 @@ describe('request IDs', () => {
       ids: ['TICKET-0050', 'req-0040', 'REQ-12a', 'REQ-', 'REQ-0002'],
       next: 'REQ-0003',
     },
+    // Past 2^53, Number arithmetic rounds the successor down to REQ-9007199254740992.
+    { label: 'a suffix beyond 2^53', ids: ['REQ-9007199254740993'], next: 'REQ-9007199254740994' },
+    // Number rounding would hand out REQ-9007199254740992 again, colliding with a stored ID.
+    {
+      label: 'an ID Number rounding would reissue',
+      ids: ['REQ-9007199254740992', 'REQ-9007199254740993'],
+      next: 'REQ-9007199254740994',
+    },
+    { label: 'a 30-digit suffix', ids: [`REQ-${'9'.repeat(30)}`], next: `REQ-1${'0'.repeat(30)}` },
   ];
 
   it.each(NEXT_ID_CASES)('nextRequestId after $label is $next', ({ ids, next }) => {
     expect(nextRequestId(ids.map((id) => ({ id })))).toBe(next);
   });
 
-  it.each([
+  it.each<{ readonly n: number | bigint; readonly id: string }>([
     { n: 1, id: 'REQ-0001' },
     { n: 42, id: 'REQ-0042' },
     { n: 9999, id: 'REQ-9999' },
     { n: 10000, id: 'REQ-10000' },
+    { n: Number.MAX_SAFE_INTEGER, id: 'REQ-9007199254740991' },
+    { n: 1n, id: 'REQ-0001' },
+    { n: 10000n, id: 'REQ-10000' },
+    { n: 2n ** 64n, id: 'REQ-18446744073709551616' },
   ])('formatRequestId($n) is $id', ({ n, id }) => {
     expect(formatRequestId(n)).toBe(id);
   });
 
-  it.each([0, -1, 1.5])('formatRequestId(%s) throws a RangeError', (n) => {
-    expect(() => formatRequestId(n)).toThrow(RangeError);
-  });
+  // 2 ** 53 is the first unsafe integer, the pair to Number.MAX_SAFE_INTEGER above.
+  it.each([0, -1, 1.5, 2 ** 53, Number.NaN, Number.POSITIVE_INFINITY, 0n, -1n])(
+    'formatRequestId(%s) throws a RangeError',
+    (n) => {
+      expect(() => formatRequestId(n)).toThrow(RangeError);
+    },
+  );
 
   it('continues the sequence past REQ-9999 when creating', () => {
     const requests = deepFreeze([makeRequest('Completed', { id: 'REQ-9999' })]);
