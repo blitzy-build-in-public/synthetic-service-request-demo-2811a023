@@ -1,0 +1,422 @@
+/*
+  The app's only stylesheet: system fonts and no external resources, so it
+  loads nothing further. Element and attribute rules come first so unclassed
+  markup stays readable; the classes after them are the component contract.
+*/
+
+/* Base */
+:root {
+  color-scheme: light;
+  --color-text: #1f2328;
+  --color-muted: #59636e;
+  --color-border: #d1d9e0;
+  --color-control-border: #6e7781;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f8fa;
+  --color-accent: #0550ae;
+  --color-error: #b42318;
+  --color-warning-bg: #fff4c2;
+  --radius: 6px;
+  --control-size: 2.75rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+}
+
+/* Containers space their children with gap, so text blocks carry no margins. */
+h1,
+h2,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.75rem;
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+label,
+dt {
+  font-weight: 600;
+}
+
+/* Controls */
+button,
+input,
+select,
+textarea {
+  min-block-size: var(--control-size);
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  font: inherit;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+button {
+  min-inline-size: var(--control-size);
+  font-weight: 600;
+  background-color: var(--color-surface-muted);
+  cursor: pointer;
+}
+
+button:disabled,
+button[aria-disabled='true'] {
+  color: var(--color-muted);
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  pointer-events: none;
+}
+
+textarea {
+  min-block-size: 6rem;
+  resize: vertical;
+}
+
+/* The inset shadow thickens the error border without shifting layout. */
+[aria-invalid='true'] {
+  border-color: var(--color-error);
+  box-shadow: inset 0 0 0 1px var(--color-error);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  button:hover {
+    background-color: #eaeef2;
+  }
+
+  a:hover {
+    color: #033d8b;
+  }
+
+  .app-title:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  a {
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+  }
+}
+
+/* Tables and field values keep line breaks typed into descriptions and notes.
+   Cells break only words too long for their column, since breaking anywhere
+   lets the table squeeze short words apart; field values may break anywhere. */
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  text-align: start;
+  vertical-align: top;
+  border: 1px solid var(--color-border);
+  overflow-wrap: break-word;
+}
+
+th,
+td,
+dd {
+  white-space: pre-line;
+}
+
+dd {
+  overflow-wrap: anywhere;
+}
+
+/* Request IDs contain a hyphen, a line-break opportunity, so cell links stay whole. */
+td a {
+  white-space: nowrap;
+}
+
+thead th {
+  background-color: var(--color-surface-muted);
+}
+
+.data-table {
+  inline-size: 100%;
+}
+
+/* Vertical stacks */
+.app-shell,
+.view,
+.notice,
+[role='alert'],
+[role='status'],
+.reset-control,
+.confirm-panel,
+.action-panel,
+.request-form,
+.note-form,
+.form-field,
+.empty-state,
+.field-list dd {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Wrapping rows */
+.app-header,
+.header-controls,
+.role-switch,
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Shell */
+.app-shell {
+  gap: 1rem;
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  padding-block: 1.5rem 3rem;
+  padding-inline: 1.5rem;
+}
+
+.demo-banner {
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  font-weight: 600;
+  background-color: var(--color-warning-bg);
+  border: 2px solid #9a6700;
+  border-radius: var(--radius);
+}
+
+.app-header {
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block-end: 1rem;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.app-title,
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--control-size);
+}
+
+.app-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+/* The auto margin keeps the controls at the end when they wrap below the title. */
+.header-controls {
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-inline-start: auto;
+}
+
+/* The confirmation opens below its trigger. In the header it floats, so
+   opening it does not push the controls onto a new row. */
+.reset-control {
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.app-header .reset-control {
+  position: relative;
+}
+
+.app-header .confirm-panel {
+  position: absolute;
+  inset-block-start: calc(100% + 0.5rem);
+  inset-inline-end: 0;
+  z-index: 1;
+  inline-size: 24rem;
+  max-inline-size: calc(100vw - 2rem);
+  box-shadow: 0 4px 12px #1f232826;
+}
+
+.confirm-panel {
+  max-inline-size: 24rem;
+  padding: 0.75rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+/* Notices: role="alert" and role="status" fall back to these styles. */
+.notice,
+[role='alert'],
+[role='status'] {
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-inline-start-width: 4px;
+  border-radius: var(--radius);
+}
+
+.notice--alert,
+[role='alert'] {
+  background-color: #fef3f2;
+  border-inline-start-color: var(--color-error);
+}
+
+.notice--status,
+[role='status'] {
+  background-color: #eef6ff;
+  border-inline-start-color: var(--color-accent);
+}
+
+.view {
+  gap: 1.25rem;
+}
+
+/* Details: label and value columns; each row wrapper joins them via subgrid,
+   so labels align across rows and bare dt/dd pairs lay out the same way. */
+.field-list {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  column-gap: 1.5rem;
+}
+
+.field-list > div {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  row-gap: 0.25rem;
+  padding-block: 0.5rem;
+}
+
+.field-list > div + div {
+  border-block-start: 1px solid var(--color-border);
+}
+
+.field-list dd,
+.form-field {
+  gap: 0.25rem;
+}
+
+/* Forms */
+.request-form,
+.note-form {
+  gap: 1rem;
+  max-inline-size: 40rem;
+  padding: 1rem;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  inline-size: 100%;
+}
+
+.field-error {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-error);
+}
+
+/* Empty state and supporting copy */
+.empty-state {
+  align-items: center;
+  padding-block: 2rem;
+  padding-inline: 1rem;
+  color: var(--color-muted);
+  text-align: center;
+  background-color: var(--color-surface-muted);
+  border: 1px dashed var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+.hint {
+  font-style: italic;
+  color: var(--color-muted);
+}
+
+/* Narrow screens */
+@media (max-width: 40rem) {
+  .app-shell {
+    padding-inline: 1rem;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-controls {
+    justify-content: flex-start;
+    margin-inline-start: 0;
+  }
+
+  .app-header .confirm-panel {
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+  }
+
+  .field-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Six columns cannot fit a phone without splitting words, so each table
+     scrolls sideways on its own; current browsers keep its table semantics. */
+  .data-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* The audit Note, the only free-text column, is last; a scrolling table can
+     afford it room instead of one word per line. */
+  .data-table td:last-child {
+    min-inline-size: 12rem;
+  }
+
+  th,
+  td {
+    padding-inline: 0.5rem;
+  }
+}
