@@ -43,7 +43,6 @@ type ValidationOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly errors: FieldErrors };
 
-/** The reported errors, or `{}` for a passing result. */
 function errorsOf(result: ValidationOutcome): FieldErrors {
   return result.ok ? {} : result.errors;
 }

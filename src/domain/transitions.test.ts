@@ -205,7 +205,6 @@ const COMPLETED: AuditEntry = {
   toStatus: 'Completed',
 };
 
-// A history consistent with each status, as the workflow would have produced it.
 const HISTORIES: { readonly [S in Status]: readonly AuditEntry[] } = {
   Draft: [CREATED],
   Submitted: [CREATED, SUBMITTED],
@@ -675,9 +674,9 @@ describe('create', () => {
     readonly label: string;
     readonly priority: string | undefined;
   }[] = [
-    { label: "'Urgent'", priority: 'Urgent' },
-    { label: "'' (empty)", priority: '' },
-    { label: "'High' (invalid)", priority: 'High' },
+    { label: '\'Urgent\'', priority: 'Urgent' },
+    { label: '\'\' (empty)', priority: '' },
+    { label: '\'High\' (invalid)', priority: 'High' },
     { label: 'undefined', priority: undefined },
   ];
 
@@ -1454,4 +1453,3 @@ describe('audit helpers', () => {
     );
   });
 });
-
