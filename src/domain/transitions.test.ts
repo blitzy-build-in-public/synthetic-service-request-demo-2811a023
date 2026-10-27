@@ -612,7 +612,6 @@ describe('availableActions and isTerminal', () => {
   });
 });
 
-
 describe('create', () => {
   it('starts REQ-0001 in Draft with Normal priority, trimmed fields and one Created entry', () => {
     const requests: readonly ServiceRequest[] = deepFreeze([]);
@@ -926,7 +925,6 @@ describe('submit', () => {
     },
   );
 });
-
 
 describe('full lifecycle history', () => {
   const LIFECYCLE_ID = 'REQ-0001';

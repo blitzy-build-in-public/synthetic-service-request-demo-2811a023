@@ -91,7 +91,6 @@ export interface AuditEntry {
   readonly timestamp: string;
   /** Role selected when the command ran. */
   readonly role: Role;
-  /** What happened. */
   readonly action: AuditAction;
   /** Status before the command, or `''` for Created. */
   readonly fromStatus: Status | '';
@@ -113,7 +112,6 @@ export interface ServiceRequest {
   readonly description: string;
   /** Fixed once the request leaves Draft. */
   readonly priority: Priority;
-  /** Current workflow status. */
   readonly status: Status;
   /** ISO 8601 timestamp of the latest appended audit entry. */
   readonly lastUpdated: string;
@@ -139,7 +137,7 @@ export interface EditFields extends CreateFields {
 
 const REQUEST_ID_PATTERN = /^REQ-(\d+)$/;
 
-/** Formats a positive integer as a request ID: 1 gives `REQ-0001`, 10000 gives `REQ-10000`; throws `RangeError` otherwise. */
+/** Formats a positive safe-integer number or positive bigint as a padded request ID; throws `RangeError` for other inputs. */
 export function formatRequestId(n: number | bigint): string {
   const valid = typeof n === 'bigint' ? n >= 1n : Number.isSafeInteger(n) && n >= 1;
   if (!valid) {

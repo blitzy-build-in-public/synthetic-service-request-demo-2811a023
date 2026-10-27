@@ -575,7 +575,7 @@ describe('storage lookup on every use', () => {
 });
 
 // Written out independently of sampleData.ts, so a change there cannot change what is expected.
-const expectedSamples: readonly ServiceRequest[] = [
+const EXPECTED_SAMPLES: readonly ServiceRequest[] = [
   {
     id: 'REQ-0001',
     requesterName: 'Alex Example',
@@ -670,7 +670,7 @@ const expectedSamples: readonly ServiceRequest[] = [
 
 describe('sample data', () => {
   it('matches the three fixed samples field for field', () => {
-    expect(createSampleRequests()).toStrictEqual(expectedSamples);
+    expect(createSampleRequests()).toStrictEqual(EXPECTED_SAMPLES);
   });
 
   it('gives every sample Normal priority and the last entry timestamp as lastUpdated', () => {
@@ -706,13 +706,13 @@ describe('sample data', () => {
 
     expect(first).toHaveLength(4);
     expect(firstRequest.requesterName).toBe('Changed Name');
-    expect(createSampleRequests()).toStrictEqual(expectedSamples);
+    expect(createSampleRequests()).toStrictEqual(EXPECTED_SAMPLES);
   });
 
   it('survives serialisation and parsing unchanged', () => {
     expect(parseEnvelope(serializeEnvelope(createSampleRequests()))).toStrictEqual({
       kind: 'ok',
-      requests: expectedSamples,
+      requests: EXPECTED_SAMPLES,
     });
   });
 

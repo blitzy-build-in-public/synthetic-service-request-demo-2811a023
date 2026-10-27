@@ -36,7 +36,6 @@ interface SetupOptions extends MemoryStorageOptions {
   getStorage?: () => Storage;
 }
 
-// One store per test over its own memory storage, with a fresh clock and a subscribed listener.
 function setup(options: SetupOptions = {}) {
   const { getStorage, ...memoryOptions } = options;
   const memory = createMemoryStorage(memoryOptions);
@@ -237,7 +236,6 @@ describe.each([
 
   it('clears its notice and the warning once a save succeeds after a failed one', () => {
     const { memory, save, store } = setup({ initial: { [STORAGE_KEY]: stored } });
-    // Only the first write fails, so one store sees a failed save and then a successful one.
     vi.spyOn(memory, 'setItem').mockImplementationOnce(() => {
       throw new DOMException('Quota exceeded', 'QuotaExceededError');
     });
@@ -530,7 +528,6 @@ describe('rejected commands', () => {
     },
   );
 });
-
 
 describe('refusal lifecycle and snapshot identity', () => {
   const REFUSED_COMPLETE: Command = { type: 'complete', id: 'REQ-0001' };

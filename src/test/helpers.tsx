@@ -52,11 +52,7 @@ export const unavailableStorageGetter = (): Storage => {
   throw new DOMException('Storage is blocked', 'SecurityError');
 };
 
-/**
- * Returns a clock whose first call gives `start` and each later call `stepMs` more, as ISO 8601 strings.
- * The store calls `now()` on every dispatch, including refused and failed ones, so compare timestamps
- * with store state rather than hard-coding a tick count.
- */
+/** Returns an ISO clock starting at canonical `start` and advancing by finite `stepMs`; every store dispatch consumes a tick, including failures. */
 export function createFixedClock(start = '2026-02-01T09:00:00.000Z', stepMs = 60000): () => string {
   const startMs = Date.parse(start);
   // Only the canonical `toISOString` form is accepted: the first value must equal `start` exactly, and
@@ -116,11 +112,7 @@ export interface RenderAppResult {
   unmount: () => void;
 }
 
-/**
- * Builds the adapter and store as `src/main.tsx` does, with test doubles injected, and renders the app.
- * Each call builds a new store from whatever the storage then holds, so `unmount` followed by another
- * call over the same storage simulates a page reload.
- */
+/** Returns the rendered app's store and unmount function; a fresh call reloads from the supplied storage. */
 export function renderApp(options: RenderAppOptions = {}): RenderAppResult {
   const { storage, getStorage, now, hash } = options;
   // A getter, as in main.tsx, so the adapter looks the storage up afresh on every load and save.

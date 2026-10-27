@@ -178,8 +178,6 @@ type Outcome =
   | { readonly ok: true; readonly request: ServiceRequest }
   | Rejection;
 
-// What a permitted command on an existing request acts on: the target, the row that permits it,
-// and the role and clock value it runs with.
 interface Transition {
   readonly request: ServiceRequest;
   readonly rule: TransitionRule;

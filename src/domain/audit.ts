@@ -6,7 +6,6 @@ export interface AuditEntryInput {
   readonly timestamp: string;
   /** Role selected when the command ran. */
   readonly role: Role;
-  /** What happened. */
   readonly action: AuditAction;
   /** Status before the command, or `''` for Created. */
   readonly fromStatus: Status | '';
