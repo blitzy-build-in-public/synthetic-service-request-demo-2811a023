@@ -288,12 +288,17 @@ function applyCreate(
   if (rule === undefined) {
     return reject({ kind: 'refused', message: `Create is not available to the ${role}.` });
   }
-  const checked = validateFieldsOnSave(command.fields);
+  // The create form carries no priority, but a fields object may still hold a priority key. Only
+  // the three create-form values are projected before validation, so such a key is never validated
+  // as an Edit priority and never stored; every new request starts with the default.
+  const checked = validateFieldsOnSave({
+    requesterName: command.fields.requesterName,
+    requestType: command.fields.requestType,
+    description: command.fields.description,
+  });
   if (!checked.ok) {
     return reject({ kind: 'validation', errors: checked.errors });
   }
-  // Only the three create-form values are taken: the create form carries no priority, so every
-  // new request starts with the default whatever else the fields object holds.
   const { requesterName, requestType, description } = checked.values;
   const entry = createAuditEntry({
     timestamp: now,

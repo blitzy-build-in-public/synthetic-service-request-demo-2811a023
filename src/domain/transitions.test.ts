@@ -589,13 +589,38 @@ describe('create', () => {
     expect(accepted.request.auditHistory).toHaveLength(1);
   });
 
-  it('starts every new request as Normal even when the fields object carries a priority', () => {
-    const fields: EditFields = { ...VALID_CREATE_FIELDS, priority: 'Urgent' };
-    const accepted = expectAccepted(
-      applyCommand(deepFreeze([]), { type: 'create', fields }, 'Requester', NOW),
-    );
-    expect(accepted.request.priority).toBe('Normal');
-  });
+  // Structural typing lets a CreateFields value carry extra keys, so Create must neither validate
+  // nor store a priority it finds there, whether it is valid for Edit, empty, invalid or undefined.
+  const EXTRA_PRIORITIES: readonly {
+    readonly label: string;
+    readonly priority: string | undefined;
+  }[] = [
+    { label: "'Urgent'", priority: 'Urgent' },
+    { label: "'' (empty)", priority: '' },
+    { label: "'High' (invalid)", priority: 'High' },
+    { label: 'undefined', priority: undefined },
+  ];
+
+  it.each(EXTRA_PRIORITIES)(
+    'starts every new request as Normal even when the fields object carries priority $label',
+    ({ priority }) => {
+      const withPriority = deepFreeze({ ...VALID_CREATE_FIELDS, priority });
+      const fields: CreateFields = withPriority;
+      const accepted = expectAccepted(
+        applyCommand(deepFreeze([]), { type: 'create', fields }, 'Requester', NOW),
+      );
+      expect(accepted.request).toStrictEqual({
+        id: 'REQ-0001',
+        ...VALID_CREATE_FIELDS,
+        priority: 'Normal',
+        status: 'Draft',
+        lastUpdated: NOW,
+        auditHistory: [
+          { timestamp: NOW, role: 'Requester', action: 'Created', fromStatus: '', toStatus: '' },
+        ],
+      });
+    },
+  );
 
   it('rejects a request type outside the three without creating a request', () => {
     const requests = deepFreeze([makeRequest('Draft')]);

@@ -283,6 +283,11 @@ describe('validateForSubmission', () => {
     },
     { label: 'a blank request type', fields: { requestType: '' }, errors: { requestType: TYPE_REQUIRED } },
     {
+      label: 'a whitespace-only request type',
+      fields: { requestType: WHITESPACE },
+      errors: { requestType: TYPE_REQUIRED },
+    },
+    {
       label: 'a blank description',
       fields: { description: '' },
       errors: { description: DESCRIPTION_REQUIRED },
