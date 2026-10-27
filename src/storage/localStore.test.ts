@@ -119,6 +119,20 @@ function readStored(storage: Storage): string {
   return raw;
 }
 
+/** Every key in `storage` with its raw value, read back through the `Storage` interface itself. */
+function storedEntries(storage: Storage): Record<string, string> {
+  const entries: Record<string, string> = {};
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    const value = key === null ? null : storage.getItem(key);
+    if (key === null || value === null) {
+      throw new Error(`Expected a stored entry at position ${index}.`);
+    }
+    entries[key] = value;
+  }
+  return entries;
+}
+
 function loadedRequests(result: LoadResult): ServiceRequest[] {
   if (result.kind !== 'ok') {
     throw new Error(`Expected an ok load, received ${result.kind}.`);
@@ -377,21 +391,41 @@ describe('request and audit entry shape on load', () => {
 });
 
 describe('load never writes', () => {
-  it.each([
-    { name: 'unreadable', raw: 'not json {' },
-    { name: 'wrong-version', raw: '{"version":2,"requests":[]}' },
-  ])('leaves $name data byte-identical across repeated loads', ({ raw }) => {
-    const storage = createMemoryStorage({ initial: { [STORAGE_KEY]: raw } });
+  // The valid rows are spaced or carry unknown keys, so any compact or normalising rewrite of an ok
+  // load changes their bytes.
+  it.each<{ name: string; initial: Record<string, string>; kind: LoadResult['kind'] }>([
+    { name: 'empty', initial: {}, kind: 'empty' },
+    {
+      name: 'spaced-JSON valid',
+      initial: { [STORAGE_KEY]: JSON.stringify({ version: 1, requests: [makeDraft()] }, null, 2) },
+      kind: 'ok',
+    },
+    {
+      name: 'unknown-key valid',
+      initial: {
+        [STORAGE_KEY]: envelopeWith([{ ...makeDraft(), colour: 'blue' }], {
+          exportedBy: 'Riley Test',
+        }),
+      },
+      kind: 'ok',
+    },
+    { name: 'unreadable', initial: { [STORAGE_KEY]: 'not json {' }, kind: 'unreadable' },
+    {
+      name: 'wrong-version',
+      initial: { [STORAGE_KEY]: '{"version":2,"requests":[]}' },
+      kind: 'wrongVersion',
+    },
+  ])('leaves $name storage byte-identical across repeated loads', ({ initial, kind }) => {
+    const storage = createMemoryStorage({ initial });
     const setItem = vi.spyOn(storage, 'setItem');
     const removeItem = vi.spyOn(storage, 'removeItem');
     const clear = vi.spyOn(storage, 'clear');
     const adapter = createLocalStorageAdapter(() => storage);
 
-    adapter.load();
-    adapter.load();
+    expect(adapter.load().kind).toBe(kind);
+    expect(adapter.load().kind).toBe(kind);
 
-    expect(readStored(storage)).toBe(raw);
-    expect(storage.length).toBe(1);
+    expect(storedEntries(storage)).toStrictEqual(initial);
     expect(setItem).not.toHaveBeenCalled();
     expect(removeItem).not.toHaveBeenCalled();
     expect(clear).not.toHaveBeenCalled();
@@ -417,8 +451,16 @@ describe('unknown keys', () => {
 describe('save classification', () => {
   it.each([
     {
-      name: 'a QuotaExceededError',
+      name: 'a QuotaExceededError DOMException',
       makeStorage: () => createMemoryStorage({ failOnSet: 'quota' }),
+      reason: 'quota',
+    },
+    {
+      name: 'the QuotaExceededError name alone',
+      makeStorage: () =>
+        throwingSetItemStorage(
+          Object.assign(new Error('Quota exceeded'), { name: 'QuotaExceededError' }),
+        ),
       reason: 'quota',
     },
     {
