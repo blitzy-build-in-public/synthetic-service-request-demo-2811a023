@@ -21,13 +21,14 @@ const UNREADABLE_VALUE = '{not json';
 const VERSION_2_VALUE = '{"version":2,"requests":[]}';
 const MISSING_VERSION_VALUE = '{"requests":[]}';
 
-// Wraps the real adapter so saves can be counted and inspected; the adapter itself is never spied on,
-// because its object may be frozen.
+// Wraps the real adapter so loads and saves can be counted and inspected; the adapter itself is never
+// spied on, because its object may be frozen.
 function countingAdapter(getStorage: () => Storage) {
   const inner = createLocalStorageAdapter(getStorage);
+  const load = vi.fn(() => inner.load());
   const save = vi.fn((requests: readonly ServiceRequest[]) => inner.save(requests));
-  const adapter: StorageAdapter = { load: () => inner.load(), save };
-  return { adapter, save };
+  const adapter: StorageAdapter = { load, save };
+  return { adapter, load, save };
 }
 
 interface SetupOptions extends MemoryStorageOptions {
@@ -39,11 +40,11 @@ interface SetupOptions extends MemoryStorageOptions {
 function setup(options: SetupOptions = {}) {
   const { getStorage, ...memoryOptions } = options;
   const memory = createMemoryStorage(memoryOptions);
-  const { adapter, save } = countingAdapter(getStorage ?? (() => memory));
+  const { adapter, load, save } = countingAdapter(getStorage ?? (() => memory));
   const store = createAppStore({ storage: adapter, now: createFixedClock() });
   const listener = vi.fn();
   const unsubscribe = store.subscribe(listener);
-  return { memory, save, store, listener, unsubscribe };
+  return { memory, load, save, store, listener, unsubscribe };
 }
 
 function accepted(result: CommandResult): Extract<CommandResult, { readonly ok: true }> {
@@ -129,7 +130,7 @@ describe('startup modes', () => {
   ];
 
   it.each(modes)('$mode, without writing', ({ options, requests, storageWarning, loadIssue, stored }) => {
-    const { memory, save, store } = setup(options);
+    const { memory, load, save, store } = setup(options);
 
     expect(store.getState()).toEqual({
       requests,
@@ -138,6 +139,7 @@ describe('startup modes', () => {
       loadIssue,
       refusal: null,
     });
+    expect(load).toHaveBeenCalledTimes(1);
     expect(save).not.toHaveBeenCalled();
     expect(memory.getItem(STORAGE_KEY)).toBe(stored);
   });
@@ -146,6 +148,28 @@ describe('startup modes', () => {
     const { store } = setup({ initial: { [STORAGE_KEY]: serializeEnvelope(oneSample) } });
 
     expect(accepted(store.dispatch(CREATE_RILEY)).request.id).toBe('REQ-0002');
+  });
+
+  it('reads storage once at startup and never again', () => {
+    const { load, store } = setup();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    accepted(store.dispatch(CREATE_RILEY));
+    expect(
+      rejected(
+        store.dispatch({ type: 'create', fields: { ...RILEY_FIELDS, requesterName: 'x'.repeat(81) } }),
+      ).kind,
+    ).toBe('validation');
+    expect(rejected(store.dispatch({ type: 'complete', id: 'REQ-0001' })).kind).toBe('refused');
+    expect(rejected(store.dispatch({ type: 'submit', id: 'REQ-9999' })).kind).toBe('notFound');
+    // Each is called twice, first with something to change and then as a no-op, so both of its branches run.
+    store.clearRefusal();
+    store.clearRefusal();
+    store.setRole('Reviewer');
+    store.setRole('Reviewer');
+    store.resetToSamples();
+
+    expect(load).toHaveBeenCalledTimes(1);
   });
 
   it('leaves unreadable data byte-identical through a validation failure, refusals and a role switch', () => {
@@ -210,6 +234,32 @@ describe.each([
     expect(store.getState().loadIssue).toBe(loadIssue);
     expect(memory.getItem(STORAGE_KEY)).toBe(stored);
   });
+
+  it('clears its notice and the warning once a save succeeds after a failed one', () => {
+    const { memory, save, store } = setup({ initial: { [STORAGE_KEY]: stored } });
+    // Only the first write fails, so one store sees a failed save and then a successful one.
+    vi.spyOn(memory, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError');
+    });
+
+    const created = accepted(store.dispatch(CREATE_RILEY)).request;
+
+    expect(store.getState().requests).toEqual([created]);
+    expect(store.getState().storageWarning).toBe(true);
+    expect(store.getState().loadIssue).toBe(loadIssue);
+    expect(memory.getItem(STORAGE_KEY)).toBe(stored);
+
+    const submitted = accepted(store.dispatch({ type: 'submit', id: created.id })).request;
+
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(submitted.status).toBe('Submitted');
+    expect(submitted.auditHistory.map((entry) => entry.action)).toEqual(['Created', 'Submitted']);
+    expect(store.getState().requests).toEqual([submitted]);
+    // The successful save writes the whole in-memory list, including the change the failed save missed.
+    expect(memory.getItem(STORAGE_KEY)).toBe(serializeEnvelope(store.getState().requests));
+    expect(store.getState().loadIssue).toBeNull();
+    expect(store.getState().storageWarning).toBe(false);
+  });
 });
 
 describe('persistence timing', () => {
@@ -255,17 +305,73 @@ describe('persistence timing', () => {
     expect(memory.getItem(STORAGE_KEY)).toBe(serializeEnvelope(store.getState().requests));
   });
 
-  it('has saved before subscribers are notified', () => {
-    const { memory, save, store } = setup();
-    const seen: { stored: string | null; saves: number }[] = [];
-    store.subscribe(() => {
-      seen.push({ stored: memory.getItem(STORAGE_KEY), saves: save.mock.calls.length });
-    });
+  // A valid stored list unlike anything either operation produces, so finding it unchanged shows that a
+  // failed write left it alone.
+  const seed = serializeEnvelope(createSampleRequests().slice(0, 1));
+  const operations: readonly {
+    operation: string;
+    // Performs the operation and returns the list subscribers must already see when notified.
+    run: (store: ReturnType<typeof createAppStore>) => readonly ServiceRequest[];
+    // A command result hands back the very list the store publishes; reset builds its samples inside the
+    // store, so only their value can be compared.
+    compare: 'toBe' | 'toEqual';
+  }[] = [
+    {
+      operation: 'an accepted create',
+      run: (store) => accepted(store.dispatch(CREATE_RILEY)).requests,
+      compare: 'toBe',
+    },
+    {
+      operation: 'a confirmed reset',
+      run: (store) => {
+        store.resetToSamples();
+        return createSampleRequests();
+      },
+      compare: 'toEqual',
+    },
+  ];
+  const outcomes: readonly {
+    outcome: string;
+    failOnSet: MemoryStorageOptions['failOnSet'];
+    saved: boolean;
+  }[] = [
+    { outcome: 'a successful write', failOnSet: undefined, saved: true },
+    { outcome: 'a full storage', failOnSet: 'quota', saved: false },
+    { outcome: 'unavailable writes', failOnSet: 'unavailable', saved: false },
+  ];
 
-    accepted(store.dispatch(CREATE_RILEY));
+  it.each(operations.flatMap((operation) => outcomes.map((outcome) => ({ ...operation, ...outcome }))))(
+    'has attempted the save before notifying, once, for $operation with $outcome',
+    ({ run, compare, failOnSet, saved }) => {
+      const { memory, save, store, listener } = setup({ initial: { [STORAGE_KEY]: seed }, failOnSet });
+      const seen: {
+        saves: number;
+        stored: string | null;
+        requests: readonly ServiceRequest[];
+        storageWarning: boolean;
+      }[] = [];
+      listener.mockImplementation(() => {
+        const { requests, storageWarning } = store.getState();
+        seen.push({
+          saves: save.mock.calls.length,
+          stored: memory.getItem(STORAGE_KEY),
+          requests,
+          storageWarning,
+        });
+      });
 
-    expect(seen).toEqual([{ stored: serializeEnvelope(store.getState().requests), saves: 1 }]);
-  });
+      const expected = run(store);
+      const stored = saved ? serializeEnvelope(store.getState().requests) : seed;
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(seen).toEqual([{ saves: 1, stored, requests: expected, storageWarning: !saved }]);
+      expect(seen[0]?.requests)[compare](expected);
+      // Subscribers read the snapshot that stays in place, so no state change after notifying bypassed them.
+      expect(seen[0]?.requests).toBe(store.getState().requests);
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(memory.getItem(STORAGE_KEY)).toBe(stored);
+    },
+  );
 
   it('saves once per confirmed reset, clearing the refusal and keeping the role', () => {
     const { save, store, listener } = setup();
@@ -352,11 +458,25 @@ describe('rejected commands', () => {
       store.setRole(role);
       listener.mockClear();
       const before = store.getState();
+      // `before` aliases the live snapshot, which is frozen only at its root, so its requests and histories
+      // could change in place unseen; an independent deep copy taken now is what exposes such a change.
+      const requestsBefore = structuredClone(before.requests);
 
       expect(rejected(store.dispatch(command))).toEqual(error);
       expect(save).not.toHaveBeenCalled();
       expect(listener).not.toHaveBeenCalled();
       expect(store.getState()).toBe(before);
+
+      const { requests } = store.getState();
+      expect(requests).toEqual(requestsBefore);
+      // The store starts from the samples; their IDs keep the field checks below from passing vacuously.
+      expect(requests.map(({ id }) => id)).toEqual(['REQ-0001', 'REQ-0002', 'REQ-0003']);
+      for (const previous of requestsBefore) {
+        const current = requests.find(({ id }) => id === previous.id);
+        expect(current?.status).toBe(previous.status);
+        expect(current?.lastUpdated).toBe(previous.lastUpdated);
+        expect(current?.auditHistory).toEqual(previous.auditHistory);
+      }
     },
   );
 
@@ -621,4 +741,3 @@ describe('role (R12, A8)', () => {
     expect(reloaded.getState().requests).toEqual(store.getState().requests);
   });
 });
-
