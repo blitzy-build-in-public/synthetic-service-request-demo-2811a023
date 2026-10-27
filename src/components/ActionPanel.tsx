@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 // React's SubmitEvent, not FormEvent: the pinned @types/react deprecates FormEvent and types onSubmit with SubmitEvent.
 import type { ChangeEvent, MouseEvent, SubmitEvent } from 'react';
 import { availableActions, isTerminal } from '../domain/transitions';
@@ -64,13 +64,22 @@ function noteCommand(rule: TransitionRule, id: string, note: string): Command | 
   }
 }
 
+// The form renders after every action button, so focus left on its opener would reach the other
+// actions, Complete among them, before the field. `nearest` scrolls only as far as the whole form, Send
+// and Cancel included, needs; the focus then must not scroll again and undo that.
+function revealNoteForm(form: HTMLFormElement | null, field: HTMLTextAreaElement | null): void {
+  form?.scrollIntoView({ block: 'nearest' });
+  field?.focus({ preventScroll: true });
+}
+
 /**
  * Offers one control per transition-table row `availableActions` returns for the role and status, with
  * an inline note form for rows that need one. It decides nothing itself: the store's dispatch runs every
  * command through the domain, and a refusal is shown by the app shell. The parent keys the panel by role
  * and status, so a role switch or a completed transition remounts it and closes any open note form. Only
- * an accepted transition calls `onTransition`, as a role switch leaves focus on the switch; cancelling a
- * note form returns focus to the action button that opened it.
+ * an accepted transition calls `onTransition`, as a role switch leaves focus on the switch. Opening a note
+ * form brings it into view and focuses its field, so the next keystroke lands where the note is typed;
+ * cancelling it returns focus to the action button that opened it.
  */
 export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransition }: ActionPanelProps) {
   const store = useAppStore();
@@ -82,12 +91,36 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
   const [sendAttempt, setSendAttempt] = useState(0);
   const noteId = useId();
   const noteErrorId = `${noteId}-error`;
+  const noteFormId = `${noteId}-form`;
   // Cancel unmounts its own focused button; the opener stays mounted, so focus returns there.
   const noteOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const noteFormRef = useRef<HTMLFormElement>(null);
+  const noteFieldRef = useRef<HTMLTextAreaElement>(null);
+
+  // The form mounts in the commit that sets `openRule`, so it can be revealed only after that commit.
+  useEffect(() => {
+    if (openRule !== null) {
+      revealNoteForm(noteFormRef.current, noteFieldRef.current);
+    }
+  }, [openRule]);
+
+  // A refused send inserts its message above Send, which can push the focused button out of view. Focus
+  // stays on Send, so only the scroll is repeated. The count starts at 0 and only rises while a form is open.
+  useEffect(() => {
+    if (sendAttempt > 0) {
+      noteFormRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [sendAttempt]);
 
   function handleAction(rule: TransitionRule, trigger: HTMLButtonElement) {
     if (rule.noteField !== null) {
       noteOpenerRef.current = trigger;
+      // A repeated press on the open form's opener must not discard the typed note or its message.
+      // `openRule` does not change, so the effect that reveals a newly opened form does not run again.
+      if (openRule !== null && openRule.action === rule.action) {
+        revealNoteForm(noteFormRef.current, noteFieldRef.current);
+        return;
+      }
       setOpenRule(rule);
       setNoteText('');
       setNoteError(undefined);
@@ -164,25 +197,38 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
         </p>
       ) : (
         <div className="button-row">
-          {rules.map((rule) => (
-            <button
-              type="button"
-              key={rule.action}
-              onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                handleAction(rule, event.currentTarget);
-              }}
-            >
-              {rule.label}
-            </button>
-          ))}
+          {rules.map((rule) => {
+            // Only a note action discloses a form, so only its button reports whether that form is open.
+            const expanded = rule.noteField === null ? undefined : openRule?.action === rule.action;
+            return (
+              <button
+                type="button"
+                key={rule.action}
+                aria-expanded={expanded}
+                aria-controls={expanded === true ? noteFormId : undefined}
+                onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                  // A transition remounts the panel with other actions in the same places, so the second
+                  // click of a double-click would press whichever replaced the first. Only a first click
+                  // acts; keyboard and programmatic clicks report a count of 0.
+                  if (event.detail > 1) {
+                    return;
+                  }
+                  handleAction(rule, event.currentTarget);
+                }}
+              >
+                {rule.label}
+              </button>
+            );
+          })}
         </div>
       )}
       {/* No maxLength: an over-length note must stay in the field and be refused with a message. */}
       {copy !== null && (
-        <form className="note-form" noValidate onSubmit={handleNoteSubmit}>
+        <form ref={noteFormRef} id={noteFormId} className="note-form" noValidate onSubmit={handleNoteSubmit}>
           <div className="form-field">
             <label htmlFor={noteId}>{copy.label}</label>
             <textarea
+              ref={noteFieldRef}
               id={noteId}
               rows={3}
               value={noteText}

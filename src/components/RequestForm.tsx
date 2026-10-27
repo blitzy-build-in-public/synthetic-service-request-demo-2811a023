@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 // React's SubmitEvent, not FormEvent: the pinned @types/react deprecates FormEvent and types onSubmit with SubmitEvent.
 import type { ChangeEvent, SubmitEvent } from 'react';
 import { PRIORITIES, REQUEST_TYPES } from '../domain/model';
@@ -49,6 +49,14 @@ export function RequestForm(props: RequestFormProps) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saveAttempt, setSaveAttempt] = useState(0);
   const baseId = useId();
+  // The parent closes the form on success only when React commits, so a second submit in the same task
+  // (two scripted clicks) would save the same values again: a duplicate draft or Edited entry. Every
+  // submit re-renders through `saveAttempt`, so releasing after each commit ignores only that second
+  // submit, while a form left open by field errors or a refusal still accepts the next one.
+  const submitPending = useRef(false);
+  useLayoutEffect(() => {
+    submitPending.current = false;
+  });
 
   const controlId = (field: FormField): string => `${baseId}-${field}`;
   const errorId = (field: FormField): string => `${baseId}-${field}-error`;
@@ -83,6 +91,10 @@ export function RequestForm(props: RequestFormProps) {
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitPending.current) {
+      return;
+    }
+    submitPending.current = true;
     const result =
       props.mode === 'edit'
         ? props.onSave({ requesterName, requestType, description, priority })

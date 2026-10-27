@@ -580,6 +580,66 @@ function detailsFieldValues(): EditFormValues {
   };
 }
 
+/** A create or edit form whose save must run once per accepted submit, and what one save leaves. */
+interface SaveOnceCase {
+  readonly button: string;
+  readonly hash: string;
+  /** Opens the form and enters otherwise valid values with `requesterName` as the name. */
+  readonly open: (requesterName: string) => void;
+  /** The request that one save creates or edits. */
+  readonly id: string;
+  /** Every request ID the store holds after one save. */
+  readonly ids: readonly string[];
+  /** The audit actions of `id` after one save. */
+  readonly actions: readonly string[];
+}
+
+const SAVE_ONCE_CASES: readonly SaveOnceCase[] = [
+  {
+    button: 'Create draft',
+    hash: '#/',
+    open: (requesterName) => {
+      openCreateForm();
+      enterCreateFormValues({ ...VALID_FIELDS, requesterName });
+    },
+    id: 'REQ-0004',
+    ids: [...SAMPLE_IDS, 'REQ-0004'],
+    actions: ['Created'],
+  },
+  {
+    button: 'Save changes',
+    hash: '#/requests/REQ-0001',
+    open: (requesterName) => {
+      clickAction('Edit');
+      enterEditFormValues({ ...EDITED_VALUES, requesterName });
+    },
+    id: 'REQ-0001',
+    ids: SAMPLE_IDS,
+    actions: ['Created', 'Edited'],
+  },
+];
+
+// Inside one `act` React defers rendering to the end of the callback, so the second click reaches the
+// form before the first save has re-rendered or closed it, as two `click()` calls in one browser task do.
+function submitTwiceInOneTask(name: string): void {
+  const button = screen.getByRole('button', { name });
+  act(() => {
+    button.click();
+    button.click();
+  });
+}
+
+/** Asserts that exactly one save of `testCase` happened: in the view, the store and the stored envelope. */
+function expectSavedOnce(store: AppStore, testCase: SaveOnceCase): void {
+  expect(screen.queryByRole('button', { name: testCase.button })).toBeNull();
+  expect(window.location.hash).toBe(`#/requests/${testCase.id}`);
+  const { requests } = store.getState();
+  expect(requests.map((request) => request.id)).toEqual(testCase.ids);
+  expect(storedRequest(store, testCase.id).auditHistory.map((entry) => entry.action)).toEqual(testCase.actions);
+  expect(column(readTableRows(auditTable()), AUDIT_COLUMN.action)).toEqual(testCase.actions);
+  expect(readEnvelope(window.localStorage)).toEqual({ version: 1, requests });
+}
+
 describe('Draft edit form and cancellation', () => {
   it('Edit opens with the four saved values and saves a change to every one as one Edited entry', () => {
     const { store } = renderApp({ hash: '#/requests/REQ-0001' });
@@ -684,6 +744,33 @@ describe('Draft edit form and cancellation', () => {
 
     clickAction('Edit');
     expect(editFormValues()).toEqual(REQ_0001_VALUES);
+  });
+
+  it.each(SAVE_ONCE_CASES)('a second "$button" submit in the same task as the first saves nothing more', (testCase) => {
+    const { store } = renderApp({ hash: testCase.hash });
+    testCase.open(VALID_FIELDS.requesterName);
+
+    submitTwiceInOneTask(testCase.button);
+
+    expectSavedOnce(store, testCase);
+  });
+
+  it.each(SAVE_ONCE_CASES)('"$button" refused for an over-length name saves once after the name is fixed', (testCase) => {
+    const { store } = renderApp({ hash: testCase.hash });
+    const requestsBefore = store.getState().requests;
+    testCase.open('R'.repeat(81));
+
+    fireEvent.click(screen.getByRole('button', { name: testCase.button }));
+
+    const name = labelledControl('Requester name', HTMLInputElement);
+    expect(describedMessage(name)).toBe('Requester name must be 80 characters or fewer.');
+    expect(store.getState().requests).toBe(requestsBefore);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+    fireEvent.change(name, { target: { value: VALID_FIELDS.requesterName } });
+    submitTwiceInOneTask(testCase.button);
+
+    expectSavedOnce(store, testCase);
   });
 });
 
@@ -1346,5 +1433,108 @@ describe('Accessibility announcements and focus', () => {
 
     expect(screen.queryByLabelText(REASON_FORM.label)).toBeNull();
     expect(document.activeElement).toBe(select);
+  });
+
+  it.each([REASON_FORM, INFORMATION_FORM])(
+    'opening the $label form focuses its field, scrolls the form into view and marks only $action expanded',
+    (form) => {
+      const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+      renderNoteForm(form);
+      const opener = actionButton(form.action);
+      const field = labelledControl(form.label, HTMLTextAreaElement);
+      const noteForm = field.closest('form');
+      if (noteForm === null) {
+        throw new Error(`The ${form.label} field is not inside a <form>.`);
+      }
+
+      expect(document.activeElement).toBe(field);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(scrollIntoView.mock.contexts[0]).toBe(noteForm);
+      expect(noteForm.id).not.toBe('');
+      expect(opener.getAttribute('aria-expanded')).toBe('true');
+      expect(opener.getAttribute('aria-controls')).toBe(noteForm.id);
+      const disclosures = within(actionsRegion())
+        .getAllByRole('button')
+        .filter((button) => button.hasAttribute('aria-expanded') || button.hasAttribute('aria-controls'));
+      expect(disclosures.map((button) => button.textContent)).toEqual([form.action]);
+
+      press(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(opener.getAttribute('aria-expanded')).toBe('false');
+      expect(opener.hasAttribute('aria-controls')).toBe(false);
+    },
+  );
+
+  it.each([REASON_FORM, INFORMATION_FORM])(
+    'a refused send scrolls the $label form into view again and leaves focus on $send',
+    (form) => {
+      const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+      renderNoteForm(form);
+      const field = labelledControl(form.label, HTMLTextAreaElement);
+      const noteForm = field.closest('form');
+      const send = screen.getByRole('button', { name: form.send });
+      // Opening scrolled once already; only the send's own scroll is counted.
+      scrollIntoView.mockClear();
+
+      press(send);
+
+      expect(field.getAttribute('aria-invalid')).toBe('true');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(scrollIntoView.mock.contexts[0]).toBe(noteForm);
+      expect(document.activeElement).toBe(send);
+    },
+  );
+
+  it.each([
+    { ...REASON_FORM, message: 'Reason is required.' },
+    { ...INFORMATION_FORM, message: 'Supplied information is required.' },
+  ])('pressing $action again keeps the typed $label text and its message, and focuses the field', (form) => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const store = renderNoteForm(form);
+    const field = labelledControl(form.label, HTMLTextAreaElement);
+    press(screen.getByRole('button', { name: form.send }));
+    expect(describedMessage(field)).toBe(form.message);
+    const before = store.getState();
+    const text = 'A fictional note still being typed.';
+    fireEvent.change(field, { target: { value: text } });
+    scrollIntoView.mockClear();
+
+    press(actionButton(form.action));
+
+    expect(labelledControl(form.label, HTMLTextAreaElement)).toBe(field);
+    expect(field.value).toBe(text);
+    expect(describedMessage(field)).toBe(form.message);
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(field);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(field.closest('form'));
+    expect(actionButton(form.action).getAttribute('aria-expanded')).toBe('true');
+    expect(store.getState()).toBe(before);
+  });
+
+  it('a double-click on Start review leaves the Request more information that replaces it unpressed', () => {
+    renderApp({ hash: '#/requests/REQ-0001' });
+    press(actionButton('Submit'));
+    switchRole('Reviewer');
+    fireEvent.click(actionButton('Start review'), { detail: 1 });
+    const replacement = actionButton('Request more information');
+
+    fireEvent.click(replacement, { detail: 2 });
+
+    expect(detailsText('Status')).toBe('In Review');
+    expect(column(readTableRows(auditTable()), AUDIT_COLUMN.action)).toEqual([
+      'Created',
+      'Submitted',
+      'Review started',
+    ]);
+    expect(screen.queryByLabelText(REASON_FORM.label)).toBeNull();
+    expect(replacement.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(replacement, { detail: 1 });
+
+    expect(labelledControl(REASON_FORM.label, HTMLTextAreaElement).value).toBe('');
+    expect(replacement.getAttribute('aria-expanded')).toBe('true');
   });
 });
