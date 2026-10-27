@@ -1,5 +1,6 @@
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { App } from '../App';
+import type { CreateFields, Role } from '../domain/model';
 import { StoreProvider } from '../state/StoreContext';
 import { createAppStore } from '../state/store';
 import type { AppStore } from '../state/store';
@@ -181,4 +182,41 @@ export function getDetailsValue(label: string): HTMLElement {
     throw new Error(`The details row labelled "${label}" has no <dd> after its <dt>.`);
   }
   return value;
+}
+
+/** The accessible name of the header's role select. */
+export const ROLE_LABEL = 'Role (demo simulation, not authentication)';
+
+/** Switches the simulated role through the header's role select. */
+export function switchRole(role: Role): void {
+  fireEvent.change(screen.getByLabelText(ROLE_LABEL), { target: { value: role } });
+}
+
+/** Opens the list view's inline create form through its `New request` button. */
+export function openCreateForm(): void {
+  fireEvent.click(screen.getByRole('button', { name: 'New request' }));
+}
+
+/** Types `fields` into the open create form and clicks `Create draft`. */
+export function fillCreateForm(fields: CreateFields): void {
+  fireEvent.change(screen.getByLabelText('Requester name'), { target: { value: fields.requesterName } });
+  fireEvent.change(screen.getByLabelText('Request type'), { target: { value: fields.requestType } });
+  fireEvent.change(screen.getByLabelText('Description'), { target: { value: fields.description } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+}
+
+/** Opens the list view's create form, enters `fields` and creates the draft; the list view must be showing, and on success the app shows the new request's details view. */
+export function createRequest(fields: CreateFields): void {
+  openCreateForm();
+  fillCreateForm(fields);
+}
+
+/** Clicks the button named `name` inside the details view's Actions region, so only offered actions can be clicked. */
+export function clickAction(name: string): void {
+  fireEvent.click(within(screen.getByRole('region', { name: 'Actions' })).getByRole('button', { name }));
+}
+
+/** Returns the trimmed text of the details row labelled `label`. */
+export function detailsText(label: string): string {
+  return getDetailsValue(label).textContent.trim();
 }

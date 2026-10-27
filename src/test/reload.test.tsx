@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { fireEvent, screen, within } from '@testing-library/react';
-import { createFixedClock, getDetailsValue, goToHash, readTableRows, renderApp } from './helpers';
-import type { AppState } from '../state/store';
+import { fireEvent, screen } from '@testing-library/react';
+import {
+  clickAction,
+  createFixedClock,
+  createRequest,
+  detailsText,
+  goToHash,
+  readTableRows,
+  renderApp,
+  ROLE_LABEL,
+  switchRole,
+} from './helpers';
 import { STORAGE_KEY } from '../storage/localStore';
 
 // Every render here leaves `storage` and `getStorage` unset, so both sides of a reload share jsdom's real
@@ -9,7 +18,6 @@ import { STORAGE_KEY } from '../storage/localStore';
 // first-run samples, and the first request created is REQ-0004. A reload is `unmount()` followed by a new
 // `renderApp()`, which builds a fresh adapter, store and clock that load from that same storage.
 
-const ROLE_LABEL = 'Role (demo simulation, not authentication)';
 const REQUEST_IDS = ['REQ-0001', 'REQ-0002', 'REQ-0003', 'REQ-0004'];
 
 // Cell positions in `readTableRows` output, in each table's column order.
@@ -19,12 +27,6 @@ const LIST_STATUS = 4;
 const AUDIT_ACTION = 2;
 const AUDIT_NOTE = 5;
 
-interface NewRequestFields {
-  requesterName: string;
-  requestType: string;
-  description: string;
-}
-
 function getRoleSelect(): HTMLSelectElement {
   const select = screen.getByLabelText(ROLE_LABEL);
   if (!(select instanceof HTMLSelectElement)) {
@@ -33,32 +35,8 @@ function getRoleSelect(): HTMLSelectElement {
   return select;
 }
 
-function selectRole(role: AppState['role']): void {
-  fireEvent.change(getRoleSelect(), { target: { value: role } });
-}
-
 function changeField(label: string, value: string): void {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
-}
-
-// Scoped to the details view's action panel, so only controls the domain offered there can be clicked.
-function clickAction(name: string): void {
-  const panel = screen.getByRole('region', { name: 'Actions' });
-  fireEvent.click(within(panel).getByRole('button', { name }));
-}
-
-// Creates a draft through the list view's inline form; on success the app opens the new request's details.
-function createRequest(fields: NewRequestFields): void {
-  goToHash('#/');
-  fireEvent.click(screen.getByRole('button', { name: 'New request' }));
-  changeField('Requester name', fields.requesterName);
-  changeField('Request type', fields.requestType);
-  changeField('Description', fields.description);
-  fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
-}
-
-function detailsText(label: string): string {
-  return getDetailsValue(label).textContent.trim();
 }
 
 function readListRows(): string[][] {
@@ -83,6 +61,7 @@ describe('reload persistence', () => {
   it('AC5 reload preserves state', () => {
     const first = renderApp({ now: createFixedClock('2026-02-01T09:00:00.000Z') });
 
+    goToHash('#/');
     createRequest({
       requesterName: 'Riley Test',
       requestType: 'Equipment Request',
@@ -96,7 +75,7 @@ describe('reload persistence', () => {
     clickAction('Submit');
     expect(detailsText('Status')).toBe('Submitted');
 
-    selectRole('Reviewer');
+    switchRole('Reviewer');
     clickAction('Start review');
     expect(detailsText('Status')).toBe('In Review');
 
@@ -159,6 +138,7 @@ describe('reload persistence', () => {
   it('AC10 reload keeps Urgent priority', () => {
     const first = renderApp();
 
+    goToHash('#/');
     createRequest({
       requesterName: 'Morgan Trial',
       requestType: 'General Question',
