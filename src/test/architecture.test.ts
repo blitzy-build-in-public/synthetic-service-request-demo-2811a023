@@ -10,21 +10,21 @@ const OWN_PATH = '/src/test/architecture.test.ts';
 // the `?raw` query already types each record as Record<string, string>, and Vitest's file-system module cache
 // skips only files whose text contains the plain call, so a typed call would keep serving the file list of
 // an earlier run and miss files added since.
-const productionSources = import.meta.glob(
+const PRODUCTION_SOURCES = import.meta.glob(
   ['/src/**/*.{ts,tsx,css}', '!/src/**/*.test.{ts,tsx}', '!/src/test/**'],
   { query: '?raw', import: 'default', eager: true },
 );
-const allSourceFiles = import.meta.glob('/src/**/*.{ts,tsx,css}', {
+const ALL_SOURCE_FILES = import.meta.glob('/src/**/*.{ts,tsx,css}', {
   query: '?raw',
   import: 'default',
   eager: true,
 });
-const indexHtmlFiles = import.meta.glob('/index.html', {
+const INDEX_HTML_FILES = import.meta.glob('/index.html', {
   query: '?raw',
   import: 'default',
   eager: true,
 });
-const packageJsonFiles = import.meta.glob('/package.json', {
+const PACKAGE_JSON_FILES = import.meta.glob('/package.json', {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -38,17 +38,17 @@ function singleFile(files: Readonly<Record<string, string>>, path: string): stri
   return source;
 }
 
-const indexHtml = singleFile(indexHtmlFiles, '/index.html');
-const packageJson = singleFile(packageJsonFiles, '/package.json');
+const INDEX_HTML = singleFile(INDEX_HTML_FILES, '/index.html');
+const PACKAGE_JSON = singleFile(PACKAGE_JSON_FILES, '/package.json');
 
-const productionEntries = Object.entries(productionSources);
-const productionPaths = productionEntries.map(([path]) => path);
-const productionModules = productionEntries.filter(([path]) => /\.tsx?$/.test(path));
+const PRODUCTION_ENTRIES = Object.entries(PRODUCTION_SOURCES);
+const PRODUCTION_PATHS = PRODUCTION_ENTRIES.map(([path]) => path);
+const PRODUCTION_MODULES = PRODUCTION_ENTRIES.filter(([path]) => /\.tsx?$/.test(path));
 
 /** A production module's place in the dependency order. */
 type Layer = 'domain' | 'storage' | 'state' | 'components' | 'app' | 'main' | 'styles';
 
-/** Where an import specifier points: a root-relative module path without extension, or an npm package. */
+/** An import target: a normalized root-relative module path, retaining any explicit extension, or an npm package name. */
 type ResolvedSpecifier =
   | { readonly kind: 'module'; readonly path: string }
   | { readonly kind: 'package'; readonly name: string };
@@ -137,7 +137,7 @@ type ParenKind = 'call' | 'head' | 'forHead';
 // as `<T,>` or `<T extends …>`, which TypeScript does not read as an element.
 const TYPE_PARAMETERS_PATTERN = /[A-Za-z_$\u0080-\uffff][\w$\u0080-\uffff]*(?:\s*,|\s+extends\b)/y;
 
-/** `source` without its TypeScript comments; strings, templates, regular expressions and JSX text stay verbatim. */
+/** Removes script comments while preserving literal text and scanning template substitutions and JSX expressions as code. */
 function stripScriptComments(source: string, jsx: boolean): string {
   let output = '';
   let index = 0;
@@ -245,7 +245,7 @@ function stripScriptComments(source: string, jsx: boolean): string {
       if (skipComment()) {
         continue;
       }
-      if (char === "'" || char === '"') {
+      if (char === '\'' || char === '"') {
         take(endOfString(source, index, 'string literal') - index);
       } else if (char === '`') {
         takeTemplate();
@@ -278,7 +278,7 @@ function stripScriptComments(source: string, jsx: boolean): string {
         take(2);
         return;
       }
-      if (char === '"' || char === "'") {
+      if (char === '"' || char === '\'') {
         // JSX attribute strings have no escapes and may span lines.
         const end = source.indexOf(char, index + 1);
         if (end === -1) {
@@ -361,7 +361,7 @@ function stripScriptComments(source: string, jsx: boolean): string {
       headKeyword = '';
       memberNameNext = false;
       lineBreakBefore = false;
-      if (char === "'" || char === '"') {
+      if (char === '\'' || char === '"') {
         take(endOfString(source, index, 'string literal') - index);
         operandMayStart = false;
       } else if (char === '`') {
@@ -443,7 +443,7 @@ function endOfCssUrl(source: string, open: number, start: number): number {
     index += 1;
   }
   const first = source.charAt(index);
-  if (first === "'" || first === '"') {
+  if (first === '\'' || first === '"') {
     return index;
   }
   for (let char = first; char !== ')'; char = source.charAt(index)) {
@@ -473,7 +473,7 @@ function stripCssComments(source: string): string {
     }
     if (char === '\\') {
       index += escapeLength(source, index);
-    } else if (char === "'" || char === '"') {
+    } else if (char === '\'' || char === '"') {
       index = endOfString(source, index, 'CSS string');
     } else if (CSS_NAME_PART.test(char)) {
       while (CSS_NAME_PART.test(source.charAt(index))) {
@@ -491,10 +491,9 @@ function stripCssComments(source: string): string {
 }
 
 /**
- * `source` without its comments, read as `syntax`. Strings, templates, regular expressions, JSX text and CSS
- * `url(…)` stay verbatim, so prose naming a banned identifier fails no check and a quoted comment delimiter hides
- * no code. A block comment becomes a space; a line comment goes, its line break kept. Throws when a literal,
- * comment or JSX element is still open at the end, because the scan would then be out of step with the file.
+ * Removes comments using the selected syntax, preserving literal text while scanning embedded expressions as code.
+ * A block comment becomes a space; a line comment is removed with its line break retained.
+ * Throws when a literal, comment or JSX element remains open, because continuing would misalign the scan.
  */
 function stripComments(source: string, syntax: SourceSyntax): string {
   return syntax === 'css' ? stripCssComments(source) : stripScriptComments(source, syntax === 'tsx');
@@ -547,7 +546,7 @@ function endOfHtmlTag(html: string, index: number, start: number): number {
         position += 1;
       }
       const quote = html.charAt(position);
-      if (quote === '"' || quote === "'") {
+      if (quote === '"' || quote === '\'') {
         const close = html.indexOf(quote, position + 1);
         if (close === -1) {
           throw unterminated('HTML attribute value', html, position);
@@ -601,12 +600,11 @@ function stripHtmlComments(html: string): string {
   return output;
 }
 
-// Import and re-export statements never contain quotes, semicolons, parentheses or `=` before `from`, so the
-// lazy run cannot reach past its own statement into a later one.
+// Stop at quotes and statement delimiters to avoid spanning statements; string-named bindings are not recognized.
 const FROM_IMPORT_PATTERN = /\b(?:import|export)\b[^'"`;()=]*?\bfrom\s*(['"])([^'"]+)\1/g;
 const SIDE_EFFECT_IMPORT_PATTERN = /\bimport\s*(['"])([^'"]+)\1/g;
 
-/** Every specifier of the static imports and re-exports in `source`, including multi-line named imports. */
+/** Extracts specifiers from supported identifier-bound imports and re-exports, including multi-line and side-effect forms. */
 function importSpecifiers(source: string, syntax: SourceSyntax): string[] {
   const code = stripComments(source, syntax);
   const specifiers: string[] = [];
@@ -668,7 +666,7 @@ const MODULE_SUFFIXES = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
 /** The production file a resolved module path loads, if any. */
 function productionFileFor(modulePath: string): string | undefined {
   return MODULE_SUFFIXES.map((suffix) => `${modulePath}${suffix}`).find((candidate) =>
-    Object.hasOwn(productionSources, candidate),
+    Object.hasOwn(PRODUCTION_SOURCES, candidate),
   );
 }
 
@@ -811,10 +809,10 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 const HASH_ROUTE_MODULE = '/src/components/useHashRoute.ts';
 const LOCAL_STORAGE_OWNERS = ['/src/storage/', '/src/main.tsx'];
 const ENTRY_SCRIPT = '/src/main.tsx';
-const emailScannedFiles: Readonly<Record<string, string>> = { ...allSourceFiles, [OWN_PATH]: ownSource };
+const EMAIL_SCANNED_FILES: Readonly<Record<string, string>> = { ...ALL_SOURCE_FILES, [OWN_PATH]: ownSource };
 
 function filesInLayers(layers: readonly Layer[]): Array<[string, string]> {
-  return productionModules.filter(([path]) => {
+  return PRODUCTION_MODULES.filter(([path]) => {
     const layer = layerOf(path);
     return layer !== null && layers.includes(layer);
   });
@@ -825,16 +823,16 @@ describe('source loading', () => {
   it.each(['/src/domain/', '/src/storage/', '/src/state/', '/src/components/', '/src/App.tsx', '/src/main.tsx'])(
     'production sources include %s',
     (expected) => {
-      expect(productionPaths.some((path) => path.startsWith(expected))).toBe(true);
+      expect(PRODUCTION_PATHS.some((path) => path.startsWith(expected))).toBe(true);
     },
   );
 
   it('production sources exclude tests and test support', () => {
-    expect(productionPaths.filter((path) => path.includes('.test.') || path.startsWith('/src/test/'))).toEqual([]);
+    expect(PRODUCTION_PATHS.filter((path) => path.includes('.test.') || path.startsWith('/src/test/'))).toEqual([]);
   });
 
   it('the email scan covers tests, test support and this file', () => {
-    const scanned = Object.keys(emailScannedFiles);
+    const scanned = Object.keys(EMAIL_SCANNED_FILES);
     expect(scanned).toContain('/src/test/setup.ts');
     expect(scanned).toContain(OWN_PATH);
     expect(scanned.some((path) => path.includes('.test.') && path !== OWN_PATH)).toBe(true);
@@ -842,7 +840,7 @@ describe('source loading', () => {
   });
 
   // Vitest empties CSS it does not process, so a blank text here means a check below would scan nothing.
-  it.each(productionEntries)('%s is loaded with its text and belongs to a known layer', (path, source) => {
+  it.each(PRODUCTION_ENTRIES)('%s is loaded with its text and belongs to a known layer', (path, source) => {
     expect(source.trim()).not.toBe('');
     expect(layerOf(path)).not.toBeNull();
   });
@@ -851,13 +849,13 @@ describe('source loading', () => {
 describe('checker helpers', () => {
   it.each<[SourceSyntax, string, string]>([
     ['ts', 'const a = 1; // fetch()', 'const a = 1; '],
-    ['ts', "/* window\n document */ const b = 'scheme://host';", "  const b = 'scheme://host';"],
+    ['ts', '/* window\n document */ const b = \'scheme://host\';', '  const b = \'scheme://host\';'],
     ['ts', 'const c = /\\/\\//; // window', 'const c = /\\/\\//; '],
     ['ts', '/** Calls fetch( and reads window.document. */\nexport const d = 1;', ' \nexport const d = 1;'],
     ['ts', 'const e = a / b; // fetch()', 'const e = a / b; '],
     ['ts', 'const f = (a + b) / c[0] / 2; // fetch()', 'const f = (a + b) / c[0] / 2; '],
     ['ts', 'const g = `${/* fetch( */ value}${value // window\n}`;', 'const g = `${  value}${value \n}`;'],
-    ['tsx', "const h = <p>{/* fetch( */}Don't // keep</p>;", "const h = <p>{ }Don't // keep</p>;"],
+    ['tsx', 'const h = <p>{/* fetch( */}Don\'t // keep</p>;', 'const h = <p>{ }Don\'t // keep</p>;'],
     ['tsx', 'const i = <a /* window */ href="#">x</a> / 1; // fetch()', 'const i = <a   href="#">x</a> / 1; '],
     ['tsx', 'const j = <T,>(value: T) => value / 2; // fetch()', 'const j = <T,>(value: T) => value / 2; '],
     [
@@ -867,8 +865,8 @@ describe('checker helpers', () => {
     ],
     [
       'tsx',
-      "const l = <List<'a' | 'b'> label=\"x\" /* fetch( */ />; // window",
-      "const l = <List<'a' | 'b'> label=\"x\"   />; ",
+      'const l = <List<\'a\' | \'b\'> label="x" /* fetch( */ />; // window',
+      'const l = <List<\'a\' | \'b\'> label="x"   />; ',
     ],
     ['tsx', 'const m = <A b=<i>x</i> /* fetch( */ />;', 'const m = <A b=<i>x</i>   />;'],
     ['ts', 'if /* ready */ (ready) /[/*]/.test(mark); // fetch()', 'if   (ready) /[/*]/.test(mark); '],
@@ -902,7 +900,7 @@ describe('checker helpers', () => {
     [
       'a line comment delimiter in a string',
       'ts',
-      "export const load = () => { const marker = '//'; return fetch(marker); };",
+      'export const load = () => { const marker = \'//\'; return fetch(marker); };',
       PRODUCTION_BANS,
       ['fetch('],
     ],
@@ -916,14 +914,14 @@ describe('checker helpers', () => {
     [
       'comment delimiters in a template and its substitution',
       'ts',
-      "const marker = `//${'/*'}`; localStorage.clear(); const close = '*/';",
+      'const marker = `//${\'/*\'}`; localStorage.clear(); const close = \'*/\';',
       DOMAIN_BANS,
       ['localStorage'],
     ],
     [
       'a string in an object literal in a nested template',
       'ts',
-      "const label = `a${`b${{ mark: '//' }.mark}`}c`; const reply = fetch(label);",
+      'const label = `a${`b${{ mark: \'//\' }.mark}`}c`; const reply = fetch(label);',
       PRODUCTION_BANS,
       ['fetch('],
     ],
@@ -937,21 +935,21 @@ describe('checker helpers', () => {
     [
       'an escaped slash before a quantifier',
       'ts',
-      "const slashes = /\\/*/; const jar = document.cookie; const close = '*/';",
+      'const slashes = /\\/*/; const jar = document.cookie; const close = \'*/\';',
       PRODUCTION_BANS,
       ['document.cookie'],
     ],
     [
       'a quote in a regular expression after a block',
       'ts',
-      "if (ready) { run(); } /'/.test(mark); const marker = '//'; fetch(marker);",
+      'if (ready) { run(); } /\'/.test(mark); const marker = \'//\'; fetch(marker);',
       PRODUCTION_BANS,
       ['fetch('],
     ],
     [
       'a quote in a regular expression after a division',
       'ts',
-      "const half = total / 2; const quote = /'/; const marker = '//'; fetch(marker);",
+      'const half = total / 2; const quote = /\'/; const marker = \'//\'; fetch(marker);',
       PRODUCTION_BANS,
       ['fetch('],
     ],
@@ -1014,7 +1012,7 @@ describe('checker helpers', () => {
     [
       'an apostrophe in JSX text',
       'tsx',
-      "export const Hint = () => <p>Don't panic</p>; const marker = '//'; export const load = () => fetch(marker);",
+      'export const Hint = () => <p>Don\'t panic</p>; const marker = \'//\'; export const load = () => fetch(marker);',
       PRODUCTION_BANS,
       ['fetch('],
     ],
@@ -1046,8 +1044,8 @@ describe('checker helpers', () => {
   });
 
   it.each<[SourceSyntax, string, RegExp]>([
-    ['ts', "const a = 1;\nconst b = 'open", /^Unterminated string literal starting on line 2\.$/],
-    ['ts', "const a = 'line\nbreak';", /Unterminated string literal/],
+    ['ts', 'const a = 1;\nconst b = \'open', /^Unterminated string literal starting on line 2\.$/],
+    ['ts', 'const a = \'line\nbreak\';', /Unterminated string literal/],
     ['ts', 'const a = `open', /Unterminated template literal starting/],
     ['ts', 'const a = `${open', /Unterminated template literal substitution/],
     ['ts', 'const a = /open', /Unterminated regular expression literal/],
@@ -1060,7 +1058,7 @@ describe('checker helpers', () => {
     ['tsx', 'const a = <p>{open', /Unterminated JSX expression/],
     ['tsx', 'const a = <List<string', /Unterminated JSX type argument list/],
     ['tsx', 'const a = <p>a < b</p>;', /Unexpected < in JSX text/],
-    ['css', "a { content: 'open }", /Unterminated CSS string/],
+    ['css', 'a { content: \'open }', /Unterminated CSS string/],
     ['css', '/* open', /Unterminated CSS comment/],
     ['css', 'a { background: url(open }', /Unterminated CSS url\( token/],
   ])('stripComments as %s throws on %j rather than scan it out of step', (syntax, source, message) => {
@@ -1079,8 +1077,8 @@ describe('checker helpers', () => {
   // The .tsx source puts its line comment inside a JSX tag, which the scanner reads apart from other code.
   it.each(
     LINE_TERMINATORS.flatMap(([label, terminator]): Array<[SourceSyntax, string, string, string, string]> => [
-      ['ts', label, terminator, 'export const probe = 1; ', "fetch('/x');"],
-      ['tsx', label, terminator, 'export const Probe = () => <p ', "title={fetch('/x')}>x</p>;"],
+      ['ts', label, terminator, 'export const probe = 1; ', 'fetch(\'/x\');'],
+      ['tsx', label, terminator, 'export const Probe = () => <p ', 'title={fetch(\'/x\')}>x</p>;'],
     ]),
   )(
     'stripComments as %s ends a line comment at a %s and keeps the code after it',
@@ -1118,9 +1116,9 @@ describe('checker helpers', () => {
   );
 
   it.each<[SourceSyntax, string, string]>([
-    ['ts', 'U+2028', "const s = 'a\u2028b';"],
+    ['ts', 'U+2028', 'const s = \'a\u2028b\';'],
     ['ts', 'U+2029', 'const s = "a\u2029b";'],
-    ['css', 'U+2028', "a::before { content: 'a\u2028b'; }"],
+    ['css', 'U+2028', 'a::before { content: \'a\u2028b\'; }'],
     ['css', 'U+2029', 'a::before { content: "a\u2029b"; }'],
   ])('stripComments as %s keeps a string holding a %s verbatim', (syntax, _label, source) => {
     expect(stripComments(source, syntax)).toBe(source);
@@ -1160,11 +1158,11 @@ describe('checker helpers', () => {
 
   it.each<[string, string[]]>([
     [
-      [".note::before { content: '/*'; }", "@import 'remote.css';", ".note::after { content: '*/'; }"].join('\n'),
+      ['.note::before { content: \'/*\'; }', '@import \'remote.css\';', '.note::after { content: \'*/\'; }'].join('\n'),
       ['@import'],
     ],
     ['a::before { content: "\\"/*"; } @import \'remote.css\'; a::after { content: \'*/\'; }', ['@import']],
-    [".it\\'s::before { content: '/*'; } @import 'remote.css'; .b::after { content: '*/'; }", ['@import']],
+    ['.it\\\'s::before { content: \'/*\'; } @import \'remote.css\'; .b::after { content: \'*/\'; }', ['@import']],
     [
       '.badge { background: url(//cdn.example/badge.png); } @font-face { font-family: Remote; }',
       ['@font-face', 'url(//cdn.example/badge.png)'],
@@ -1185,9 +1183,9 @@ describe('checker helpers', () => {
 
   it.each([
     '<meta content="<!--"><script>fetch(\'/x\')</script><meta content="-->">',
-    "<meta content='<!--'><script>fetch('/x')</script><meta content='-->'>",
-    "<script>const open = '<!--';</script><script>fetch('/x')</script><script>const close = '-->';</script>",
-    "<title><!--</title><script>fetch('/x')</script><title>--></title>",
+    '<meta content=\'<!--\'><script>fetch(\'/x\')</script><meta content=\'-->\'>',
+    '<script>const open = \'<!--\';</script><script>fetch(\'/x\')</script><script>const close = \'-->\';</script>',
+    '<title><!--</title><script>fetch(\'/x\')</script><title>--></title>',
     '<!doctype html "<!--"><script>fetch(\'/x\')</script><p>--></p>',
   ])('stripHtmlComments keeps the script that %j puts between comment delimiters', (html) => {
     const code = stripHtmlComments(html);
@@ -1210,15 +1208,15 @@ describe('checker helpers', () => {
 
   it('importSpecifiers finds static, type-only, multi-line, re-export and side-effect imports', () => {
     const source = [
-      "import { a } from './a';",
+      'import { a } from \'./a\';',
       'import type {',
       '  B,',
       '  C,',
-      "} from '../b';",
-      "export * from './c';",
-      "export { d } from 'react-dom/client';",
-      "import './d.css';",
-      "// import { e } from './commented';",
+      '} from \'../b\';',
+      'export * from \'./c\';',
+      'export { d } from \'react-dom/client\';',
+      'import \'./d.css\';',
+      '// import { e } from \'./commented\';',
       'export const f = 1;',
     ].join('\n');
     expect(importSpecifiers(source, 'ts').sort()).toEqual(['../b', './a', './c', './d.css', 'react-dom/client']);
@@ -1227,25 +1225,25 @@ describe('checker helpers', () => {
   it.each<[SourceSyntax, string]>([
     [
       'ts',
-      ["const open = '/*';", "import { STORAGE_KEY } from '../storage/localStore';", "const close = '*/';"].join('\n'),
+      ['const open = \'/*\';', 'import { STORAGE_KEY } from \'../storage/localStore\';', 'const close = \'*/\';'].join('\n'),
     ],
     [
       'ts',
-      ['const open = `/*`;', "export { STORAGE_KEY } from '../storage/localStore';", 'const close = `*/`;'].join('\n'),
+      ['const open = `/*`;', 'export { STORAGE_KEY } from \'../storage/localStore\';', 'const close = `*/`;'].join('\n'),
     ],
     [
       'tsx',
       [
-        "export const Hint = () => <p>Don't</p>; const open = '/*';",
-        "import { STORAGE_KEY } from '../storage/localStore';",
-        "const close = '*/';",
+        'export const Hint = () => <p>Don\'t</p>; const open = \'/*\';',
+        'import { STORAGE_KEY } from \'../storage/localStore\';',
+        'const close = \'*/\';',
       ].join('\n'),
     ],
     [
       'ts',
       [
         'if (ready) /[/*]/.test(mark);',
-        "import { STORAGE_KEY } from '../storage/localStore';",
+        'import { STORAGE_KEY } from \'../storage/localStore\';',
         '/[*/]/.test(mark);',
       ].join('\n'),
     ],
@@ -1284,7 +1282,7 @@ describe.each(IMPORT_RULES)('$title', (rule) => {
   });
 });
 
-describe('components and App take decisions only from the domain table and changes only through the store', () => {
+describe('components and App do not reference applyCommand or findRule', () => {
   it.each(filesInLayers(['components', 'app']))('%s does not reference applyCommand or findRule', (file, source) => {
     expect(stripComments(source, syntaxOf(file)).match(/\b(?:applyCommand|findRule)\b/g) ?? []).toEqual([]);
   });
@@ -1292,10 +1290,10 @@ describe('components and App take decisions only from the domain table and chang
 
 describe('hash routing lives only in useHashRoute.ts', () => {
   it('useHashRoute.ts is a production module', () => {
-    expect(productionPaths).toContain(HASH_ROUTE_MODULE);
+    expect(PRODUCTION_PATHS).toContain(HASH_ROUTE_MODULE);
   });
 
-  it.each(productionEntries.filter(([path]) => path !== HASH_ROUTE_MODULE))(
+  it.each(PRODUCTION_ENTRIES.filter(([path]) => path !== HASH_ROUTE_MODULE))(
     '%s does not reference hashchange or location.hash',
     (file, source) => {
       expect(stripComments(source, syntaxOf(file)).match(/\bhashchange\b|\blocation\.hash\b/g) ?? []).toEqual([]);
@@ -1303,7 +1301,7 @@ describe('hash routing lives only in useHashRoute.ts', () => {
   );
 });
 
-describe('the domain uses no browser API and reads no clock', () => {
+describe('the domain contains none of the banned browser and clock references', () => {
   it.each(filesInLayers(['domain']))('%s', (file, source) => {
     expect(bannedUses(stripComments(source, syntaxOf(file)), DOMAIN_BANS)).toEqual([]);
   });
@@ -1311,23 +1309,23 @@ describe('the domain uses no browser API and reads no clock', () => {
 
 // Each file is stripped inside its own test, so a file the scanner cannot follow fails under its own name.
 describe('no network API, other storage API, HTML injection or dynamic import', () => {
-  it.each(productionEntries)('%s', (file, source) => {
+  it.each(PRODUCTION_ENTRIES)('%s', (file, source) => {
     expect(bannedUses(stripComments(source, syntaxOf(file)), PRODUCTION_BANS)).toEqual([]);
   });
 
   it('/index.html', () => {
-    expect(bannedUses(stripHtmlComments(indexHtml), PRODUCTION_BANS)).toEqual([]);
+    expect(bannedUses(stripHtmlComments(INDEX_HTML), PRODUCTION_BANS)).toEqual([]);
   });
 });
 
 describe('no absolute http or https URL', () => {
-  it.each<[string, string]>([...productionEntries, ['/index.html', indexHtml]])('%s', (_file, source) => {
+  it.each<[string, string]>([...PRODUCTION_ENTRIES, ['/index.html', INDEX_HTML]])('%s', (_file, source) => {
     expect(source.match(ABSOLUTE_URL_PATTERN) ?? []).toEqual([]);
   });
 });
 
 describe('localStorage is reached only by the storage adapter and the composition root', () => {
-  it.each(productionEntries.filter(([path]) => !LOCAL_STORAGE_OWNERS.some((owner) => path.startsWith(owner))))(
+  it.each(PRODUCTION_ENTRIES.filter(([path]) => !LOCAL_STORAGE_OWNERS.some((owner) => path.startsWith(owner))))(
     '%s does not reference localStorage',
     (file, source) => {
       expect(stripComments(source, syntaxOf(file)).match(/\blocalStorage\b/g) ?? []).toEqual([]);
@@ -1337,7 +1335,7 @@ describe('localStorage is reached only by the storage adapter and the compositio
 
 describe('index.html', () => {
   it('references only the local entry script and data: URIs', () => {
-    const references = htmlReferences(stripHtmlComments(indexHtml));
+    const references = htmlReferences(stripHtmlComments(INDEX_HTML));
     expect(references).toContain(ENTRY_SCRIPT);
     expect(references.filter((reference) => reference !== ENTRY_SCRIPT && !reference.startsWith('data:'))).toEqual(
       [],
@@ -1348,20 +1346,20 @@ describe('index.html', () => {
 // Beyond the http(s) ban: a protocol-relative or local url(), an @import or a web font in a stylesheet would
 // fetch more than the page, its script and its stylesheet after load.
 describe('stylesheets load no fonts or other resources', () => {
-  it.each(productionEntries.filter(([path]) => path.endsWith('.css')))('%s', (_file, source) => {
+  it.each(PRODUCTION_ENTRIES.filter(([path]) => path.endsWith('.css')))('%s', (_file, source) => {
     expect(stylesheetViolations(source)).toEqual([]);
   });
 });
 
-describe('all data is fictional: no email address in any source or test file', () => {
-  it.each(Object.entries(emailScannedFiles))('%s', (_file, source) => {
+describe('no email-shaped text in any source or test file', () => {
+  it.each(Object.entries(EMAIL_SCANNED_FILES))('%s', (_file, source) => {
     expect(source.match(EMAIL_PATTERN) ?? []).toEqual([]);
   });
 });
 
 describe('package.json', () => {
   it('declares exactly react and react-dom as runtime dependencies', () => {
-    const manifest: unknown = JSON.parse(packageJson);
+    const manifest: unknown = JSON.parse(PACKAGE_JSON);
     if (!isJsonObject(manifest)) {
       throw new Error('package.json does not hold a JSON object.');
     }

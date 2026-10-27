@@ -72,15 +72,7 @@ function revealNoteForm(form: HTMLFormElement | null, field: HTMLTextAreaElement
   field?.focus({ preventScroll: true });
 }
 
-/**
- * Offers one control per transition-table row `availableActions` returns for the role and status, with
- * an inline note form for rows that need one. It decides nothing itself: the store's dispatch runs every
- * command through the domain, and a refusal is shown by the app shell. The parent keys the panel by role
- * and status, so a role switch or a completed transition remounts it and closes any open note form. Only
- * an accepted transition calls `onTransition`, as a role switch leaves focus on the switch. Opening a note
- * form brings it into view and focuses its field, so the next keystroke lands where the note is typed;
- * cancelling it returns focus to the action button that opened it.
- */
+/** Offers domain-permitted actions and note forms; the parent must key this panel by role and status to close stale forms. */
 export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransition }: ActionPanelProps) {
   const store = useAppStore();
   // Create belongs to the list view; a details panel only offers actions on this request.
@@ -104,8 +96,7 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
     }
   }, [openRule]);
 
-  // A refused send inserts its message above Send, which can push the focused button out of view. Focus
-  // stays on Send, so only the scroll is repeated. The count starts at 0 and only rises while a form is open.
+  // A validation message can push Send out of view; reveal the form after each failed validation without moving focus.
   useEffect(() => {
     if (sendAttempt > 0) {
       noteFormRef.current?.scrollIntoView({ block: 'nearest' });

@@ -58,7 +58,7 @@ function getHashSnapshot(): string {
   return window.location.hash;
 }
 
-/** Moves to `href` and re-renders every subscribed route at once, ahead of the asynchronous `hashchange`. */
+/** Sets the location hash and synchronously notifies route subscribers before the asynchronous hashchange. */
 export function navigate(href: string): void {
   window.location.hash = href;
   // `hashchange` fires on a later task; notifying now switches the view within the current event.

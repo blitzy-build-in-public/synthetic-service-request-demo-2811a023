@@ -100,8 +100,7 @@ export function createAppStore({ storage, now }: AppStoreOptions): AppStore {
     refusal: null,
   };
   let state = Object.freeze(initial);
-  // One record per call to `subscribe`, so a callback registered twice (as a strict-mode remount does when
-  // it resubscribes) is removed only by its own unsubscribe, and a repeated unsubscribe touches nothing else.
+  // Keep each subscribe call independent, even when callbacks match, so an unsubscribe removes only its own registration.
   const subscriptions = new Set<Subscription>();
 
   function publish(next: AppState): void {

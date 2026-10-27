@@ -121,7 +121,6 @@ function parseAuditHistory(value: unknown): AuditEntry[] | null {
   return history[0]?.action === 'Created' ? history : null;
 }
 
-// Checks every attribute's type and allowed values and rebuilds the request from its eight known keys.
 function parseServiceRequest(value: unknown): ServiceRequest | null {
   if (!isRecord(value)) {
     return null;

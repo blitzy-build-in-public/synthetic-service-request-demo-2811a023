@@ -13,6 +13,7 @@ interface RequestFormBaseProps {
 
 /** Props for creating a draft; create carries no priority, so every new request starts Normal. */
 export interface CreateRequestFormProps extends RequestFormBaseProps {
+  /** Selects the create form: no Priority control, and the submit button reads "Create draft". */
   mode: 'create';
   /** Starting values, normally all blank. */
   initialValues: CreateFields;
@@ -22,6 +23,7 @@ export interface CreateRequestFormProps extends RequestFormBaseProps {
 
 /** Props for editing a Draft, including priority. */
 export interface EditRequestFormProps extends RequestFormBaseProps {
+  /** Selects the edit form: adds the Priority control, and the submit button reads "Save changes". */
   mode: 'edit';
   /** The Draft's current values. */
   initialValues: EditFields;
@@ -35,11 +37,7 @@ export type RequestFormProps = CreateRequestFormProps | EditRequestFormProps;
 /** The form's own fields; `note` belongs to the action panel's note forms. */
 type FormField = Exclude<keyof FieldErrors, 'note'>;
 
-/**
- * Create or edit form for a request. Values reach `onSave` exactly as typed: the domain trims and
- * validates them, and a blank draft is valid to save. Returned messages show below their fields, and
- * are announced, while the inputs keep their text; the parent closes the form when the save succeeds.
- */
+/** Calls `onSave` with raw create/edit fields and retains input while displaying returned field errors. */
 export function RequestForm(props: RequestFormProps) {
   // `props` stays whole so `props.mode` narrows `initialValues` and `onSave` together.
   const [requesterName, setRequesterName] = useState(props.initialValues.requesterName);
@@ -61,7 +59,6 @@ export function RequestForm(props: RequestFormProps) {
   const controlId = (field: FormField): string => `${baseId}-${field}`;
   const errorId = (field: FormField): string => `${baseId}-${field}-error`;
 
-  // A message is shown, and its control marked invalid, only when the save returned one for that field.
   const messageFor = (field: FormField): string | undefined => {
     const message = errors[field];
     return message === undefined || message === '' ? undefined : message;

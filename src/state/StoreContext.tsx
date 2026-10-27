@@ -32,8 +32,7 @@ function useRequiredStore(hookName: string): AppStore {
 /** Returns the current store snapshot and re-renders the caller whenever the store publishes a new one. */
 export function useAppState(): AppState {
   const store = useRequiredStore('useAppState');
-  // Both members are stable closures and `getState` keeps its reference until a change is published,
-  // so they go in directly: wrapping them in arrows would resubscribe on every render.
+  // Pass the stable methods directly to avoid resubscribing; `getState` returns the same snapshot until publication.
   return useSyncExternalStore(store.subscribe, store.getState);
 }
 
