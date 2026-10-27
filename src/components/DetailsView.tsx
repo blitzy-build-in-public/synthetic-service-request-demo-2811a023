@@ -230,37 +230,39 @@ export function DetailsView({ id }: DetailsViewProps) {
         />
       )}
       <h2 id={auditHeadingId}>Audit history</h2>
-      {/* On narrow screens the table scrolls sideways on its own, and no cell holds a focusable control.
-          Safari never focuses a scroll container, so the table takes focus itself, letting keyboard users
-          scroll to the columns off screen, the Note column included. */}
-      <table className="data-table" aria-labelledby={auditHeadingId} tabIndex={0}>
-        <thead>
-          <tr>
-            <th scope="col">Timestamp</th>
-            <th scope="col">Role</th>
-            <th scope="col">Action</th>
-            <th scope="col">From</th>
-            <th scope="col">To</th>
-            <th scope="col">Note</th>
-          </tr>
-        </thead>
-        <tbody>
-          {/* Stored append order is the chronological order and is never sorted. Index keys are stable
-              because the history is append-only: an entry never moves or disappears. */}
-          {request.auditHistory.map((entry, index) => (
-            <tr key={index}>
-              <td>
-                <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
-              </td>
-              <td>{entry.role}</td>
-              <td>{entry.action}</td>
-              <td>{formatStatusCell(entry.fromStatus)}</td>
-              <td>{formatStatusCell(entry.toStatus)}</td>
-              <td dir="auto">{formatBlank(entry.note)}</td>
+      {/* Below the width its columns need, the table scrolls sideways inside its wrapper, and no cell holds
+          a focusable control. Safari never focuses a scroll container, so the table takes focus itself,
+          letting keyboard users scroll to the columns off screen, the Note column included. */}
+      <div className="table-scroll table-scroll--audit">
+        <table className="data-table" aria-labelledby={auditHeadingId} tabIndex={0}>
+          <thead>
+            <tr>
+              <th scope="col">Timestamp</th>
+              <th scope="col">Role</th>
+              <th scope="col">Action</th>
+              <th scope="col">From</th>
+              <th scope="col">To</th>
+              <th scope="col">Note</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {/* Stored append order is the chronological order and is never sorted. Index keys are stable
+                because the history is append-only: an entry never moves or disappears. */}
+            {request.auditHistory.map((entry, index) => (
+              <tr key={index}>
+                <td>
+                  <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+                </td>
+                <td>{entry.role}</td>
+                <td>{entry.action}</td>
+                <td>{formatStatusCell(entry.fromStatus)}</td>
+                <td>{formatStatusCell(entry.toStatus)}</td>
+                <td dir="auto">{formatBlank(entry.note)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

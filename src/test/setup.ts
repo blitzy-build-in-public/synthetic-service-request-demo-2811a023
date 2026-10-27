@@ -5,11 +5,15 @@ import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
 if (typeof window !== 'undefined') {
-  // Browsers implement scrollIntoView, which ActionPanel calls on its note form, but jsdom does not.
+  // jsdom lays nothing out and leaves scrollIntoView unimplemented, yet the app shell calls it on every
+  // route change and ActionPanel on its note form. A mock stands in, and its calls are cleared after each
+  // test, because vi.spyOn returns this same mock and a test asserting on its calls must see only its own.
+  const scrollIntoView = vi.fn();
   if (typeof Element.prototype.scrollIntoView !== 'function') {
-    Element.prototype.scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
   }
   afterEach(() => {
+    scrollIntoView.mockClear();
     cleanup();
     window.localStorage.clear();
     window.location.hash = '';

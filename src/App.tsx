@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { DemoBanner } from './components/DemoBanner';
 import { RoleSwitch } from './components/RoleSwitch';
 import { ResetControl } from './components/ResetControl';
@@ -38,24 +38,28 @@ export function App() {
   const route = useHashRoute();
   const routeKey = routeKeyOf(route);
   const previousRouteKey = useRef(routeKey);
+  const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null);
 
   // A refusal belongs to the view it was raised on, so leaving that view clears it. Comparing against the
   // previous key skips the first mount and StrictMode's repeated effect run; success and role-switch
-  // clearing happen in the store. The control that navigated usually unmounts with the old view, which
-  // drops focus to the page body, so focus moves to the new view instead (WCAG 2.4.3). preventScroll
-  // keeps the scroll position navigation already leaves; a plain focus() scrolls a tall view's end into
-  // sight and hides the header.
-  useEffect(() => {
+  // clearing happen in the store. A hash change keeps the old view's scroll offset, which on a narrow
+  // screen hides the banner, role switch and reset, so the new view opens at the top of the shell. The
+  // control that navigated usually unmounts with the old view, which drops focus to the page body, so
+  // focus moves to the new view instead (WCAG 2.4.3); preventScroll keeps that top position, as a plain
+  // focus() scrolls a tall view's end into sight. A layout effect does both before the browser paints,
+  // so no frame shows the new view at the old offset or under the old view's refusal.
+  useLayoutEffect(() => {
     if (previousRouteKey.current !== routeKey) {
       previousRouteKey.current = routeKey;
       store.clearRefusal();
+      shellRef.current?.scrollIntoView({ block: 'start' });
       mainRef.current?.focus({ preventScroll: true });
     }
   }, [routeKey, store]);
 
   return (
-    <div className="app-shell">
+    <div ref={shellRef} className="app-shell">
       {/* The URL hash is the route, so a fragment link such as href="#main" would show "Page not found.".
           The skip link is therefore a button that moves focus to the main region instead; the next Tab
           then scrolls the view's first control into sight. */}

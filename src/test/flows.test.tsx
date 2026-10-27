@@ -1516,6 +1516,36 @@ describe('Accessibility announcements and focus', () => {
     expect(document.activeElement).toBe(select);
   });
 
+  it('only a route change scrolls the shell to its top and focuses the main region', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    renderApp();
+    const main = screen.getByRole('main');
+    const shell = main.parentElement;
+    expect(shell?.contains(screen.getByRole('complementary', { name: 'Demo notice' }))).toBe(true);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(main);
+
+    goToHash('#/requests/REQ-0001');
+
+    expect(viewHeading()).toBe('REQ-0001');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start' });
+    expect(scrollIntoView.mock.contexts[0]).toBe(shell);
+    expect(document.activeElement).toBe(main);
+
+    goToHash('#/');
+
+    expect(viewHeading()).toBe('Service requests');
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'start' });
+    expect(scrollIntoView.mock.contexts[1]).toBe(shell);
+
+    // A different hash that parses to the same list route is no route change, so the shell is not scrolled.
+    goToHash('#');
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
   it.each([REASON_FORM, INFORMATION_FORM])(
     'opening the $label form focuses its field, scrolls the form into view and marks only $action expanded',
     (form) => {

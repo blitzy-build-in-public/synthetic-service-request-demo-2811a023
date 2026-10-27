@@ -87,36 +87,39 @@ export function ListView() {
           {createAffordance}
         </div>
       ) : (
-        // On narrow screens the table scrolls sideways on its own. Safari never focuses a scroll container,
-        // so the table takes focus itself, letting keyboard users scroll to the columns off screen.
-        <table className="data-table" aria-labelledby={headingId} tabIndex={0}>
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Requester name</th>
-              <th scope="col">Request type</th>
-              <th scope="col">Priority</th>
-              <th scope="col">Status</th>
-              <th scope="col">Last updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((request) => (
-              <tr key={request.id}>
-                <td>
-                  <a href={hrefForRequest(request.id)}>{request.id}</a>
-                </td>
-                <td dir="auto">{formatBlank(request.requesterName)}</td>
-                <td>{formatBlank(request.requestType)}</td>
-                <td>{request.priority}</td>
-                <td>{request.status}</td>
-                <td>
-                  <time dateTime={request.lastUpdated}>{formatTimestamp(request.lastUpdated)}</time>
-                </td>
+        // Below the width its columns need, the table scrolls sideways inside its wrapper. Safari never
+        // focuses a scroll container, so the table takes focus itself, letting keyboard users scroll to the
+        // columns off screen.
+        <div className="table-scroll table-scroll--requests">
+          <table className="data-table" aria-labelledby={headingId} tabIndex={0}>
+            <thead>
+              <tr>
+                <th scope="col">ID</th>
+                <th scope="col">Requester name</th>
+                <th scope="col">Request type</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Status</th>
+                <th scope="col">Last updated</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {requests.map((request) => (
+                <tr key={request.id}>
+                  <td>
+                    <a href={hrefForRequest(request.id)}>{request.id}</a>
+                  </td>
+                  <td dir="auto">{formatBlank(request.requesterName)}</td>
+                  <td>{formatBlank(request.requestType)}</td>
+                  <td>{request.priority}</td>
+                  <td>{request.status}</td>
+                  <td>
+                    <time dateTime={request.lastUpdated}>{formatTimestamp(request.lastUpdated)}</time>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );

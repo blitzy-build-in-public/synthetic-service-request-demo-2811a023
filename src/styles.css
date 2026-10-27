@@ -69,7 +69,8 @@ time {
 }
 
 label,
-dt {
+dt,
+th {
   font-weight: 600;
 }
 
@@ -108,29 +109,97 @@ textarea {
   resize: vertical;
 }
 
+/* Native select appearance locks line-height to normal and insets the text
+   4px past the padding, so selects drop it and draw their own arrow, sized so
+   its edges land on whole pixels; the option list and keyboard stay native. */
+select {
+  appearance: none;
+  padding-inline-end: 2rem;
+  background-image: conic-gradient(from -45deg at 50% 100%, currentcolor 90deg, transparent 0);
+  background-position: right 0.75rem center;
+  background-size: 0.6875rem 0.375rem;
+  background-repeat: no-repeat;
+}
+
+/* Forced colours drop gradient images, so the native arrow comes back there,
+   and the start padding gives back its 4px text inset. */
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    padding-inline: calc(0.75rem - 4px) 0.75rem;
+  }
+}
+
 /* The inset shadow thickens the error border without shifting layout. */
 [aria-invalid='true'] {
   border-color: var(--color-error);
   box-shadow: inset 0 0 0 1px var(--color-error);
 }
 
+/* Forced colours repaint the error colour and drop the shadow, so the invalid
+   state changes the border's shape instead; the outline stays free for the
+   focus ring. */
+@media (forced-colors: active) {
+  [aria-invalid='true'] {
+    border-width: 3px;
+    border-style: double;
+  }
+}
+
+/* Focus scrolling brings only the border box into view; the margin brings the
+   ring outside it (a 3px outline at a 2px offset) into view as well. */
 :focus-visible {
   outline: 3px solid var(--color-accent);
   outline-offset: 2px;
+  scroll-margin-block: 0.5rem;
+}
+
+/* The view and the details heading take focus only from script, so the next
+   Tab starts inside them. The view is a landmark, not a control, so it shows
+   no ring; the heading's box shrinks to its text, so its ring frames the text
+   rather than a bar across the column. */
+main[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
+h1[tabindex='-1'] {
+  inline-size: fit-content;
+  max-inline-size: 100%;
 }
 
 @media (hover: hover) {
-  button:hover {
+  /* The fill alone barely changes, so the border darkens too; the pressed
+     state stays distinct through its darker fill. Disabled buttons are
+     excluded so they keep looking disabled. */
+  button:not(:disabled, [aria-disabled='true']):hover {
     background-color: #eaeef2;
+    border-color: var(--color-text);
   }
 
+  /* The darker blue alone barely changes, so the underline thickens too. */
   a:hover {
     color: #033d8b;
+    text-decoration-thickness: 0.125em;
   }
 
+  /* The shorthand resets the thickness, so the title's pressed underline
+     stays thicker than its hover one. */
   .app-title:hover {
     color: var(--color-text);
     text-decoration: underline;
+  }
+
+  /* Invalid fields are left out so their border stays the error red. */
+  input:not(:disabled, [aria-invalid='true']):hover,
+  select:not(:disabled, [aria-invalid='true']):hover,
+  textarea:not(:disabled, [aria-invalid='true']):hover {
+    border-color: var(--color-text);
+  }
+
+  /* An invalid field keeps its red and thickens it instead; the inset shadow
+     shifts no layout. */
+  [aria-invalid='true']:not(:disabled):hover {
+    box-shadow: inset 0 0 0 2px var(--color-error);
   }
 }
 
@@ -162,10 +231,14 @@ a:active {
 
 /* Tables and field values keep the line breaks and runs of spaces as stored,
    so they show user text exactly as the edit form holds it. Cells break only
-   words too long for their column, since breaking anywhere lets the table
-   squeeze short words apart; field values may break anywhere. */
+   words too long for their column, such as an unbroken name, so short words
+   never split; field values may break anywhere. Borders stay separate
+   because a sticky header loses its top and bottom lines to the collapsed
+   model; every cell draws its end and bottom edges, first cells their start
+   and header cells their top, a single-line grid. */
 table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 th,
@@ -174,8 +247,14 @@ td {
   padding-inline: 0.75rem;
   text-align: start;
   vertical-align: top;
-  border: 1px solid var(--color-border);
+  border-inline-end: 1px solid var(--color-border);
+  border-block-end: 1px solid var(--color-border);
   overflow-wrap: break-word;
+}
+
+th:first-child,
+td:first-child {
+  border-inline-start: 1px solid var(--color-border);
 }
 
 th,
@@ -188,17 +267,122 @@ dd {
   overflow-wrap: anywhere;
 }
 
-/* Request IDs contain a hyphen, a line-break opportunity, so cell links stay whole. */
+/* The link runs from its cell's top edge for at least a control's height, a
+   full-size touch target, while its text keeps the row's top line; the
+   inline padding leaves the inset focus ring room beside the text. The ID
+   column fits any five-digit ID on one line. A longer stored one wraps
+   inside its cell rather than run into the next column: the box shrinks only
+   to its longest unbreakable run, and the cell's break-word leaves the whole
+   digit run unbreakable, so the link may break anywhere. A box whose ID fits
+   keeps its width, so that ID stays whole. */
 td a {
-  white-space: nowrap;
+  display: inline-block;
+  min-block-size: var(--control-size);
+  padding-block-start: 0.5rem;
+  padding-inline: 0.25rem;
+  margin-block: -0.5rem;
+  margin-inline: -0.25rem;
+  overflow-wrap: anywhere;
 }
 
+/* The scroll margin, two header lines high, keeps a link reached by scrolling
+   up clear of the sticky header; the class outranks the general focus-ring
+   margin, which would let the header cover the link. */
+.data-table td a {
+  scroll-margin-block-start: 4.5rem;
+}
+
+/* Column labels stay in view while a long table scrolls the page; the
+   opaque background hides the rows passing beneath. Inside a wrapper that
+   scrolls sideways the header holds still, as that wrapper never scrolls
+   up or down. */
 thead th {
+  position: sticky;
+  inset-block-start: 0;
   background-color: var(--color-surface-muted);
+  border-block-start: 1px solid var(--color-border);
 }
 
+/* Fixed layout takes the column widths from the header row alone, so a long
+   value or an added row never moves the columns. */
 .data-table {
   inline-size: 100%;
+  table-layout: fixed;
+}
+
+/* Each table scrolls sideways inside its wrapper whenever the content column
+   is narrower than the table's minimum, so the page itself never does. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* A scrolling wrapper clips whatever lies outside it, so rings on table
+   content are drawn inset. The table's own ring goes on the wrapper, outside
+   it, since the sticky header would paint over a ring inset in the table.
+   The table's ring is removed under the same :has() test that draws the
+   wrapper's, so a browser without :has() drops both rules and keeps the
+   table's own ring. */
+.table-scroll :focus-visible {
+  outline-offset: -3px;
+}
+
+.table-scroll:has(> .data-table:focus-visible) {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.table-scroll:has(> .data-table:focus-visible) > .data-table {
+  outline: none;
+}
+
+/* Focus scrolling brings only the table's own box into view, and the
+   wrapper's ring lies 5px beyond it, so the margins leave room for the ring.
+   Below the table the ring also clears the wrapper's horizontal scrollbar,
+   which classic scrollbars make up to 17px tall. */
+.table-scroll > .data-table {
+  scroll-margin-block: 0.5rem calc(0.5rem + 17px);
+}
+
+/* Widths go to the header cells by position, which holds because each
+   table's columns come in one fixed order. Columns without a width share
+   what is left equally; each table's minimum keeps that share wide enough
+   for whole words such as "Information" and "Placeholder". */
+.table-scroll--requests .data-table {
+  inline-size: max(100%, 45rem);
+}
+
+.table-scroll--requests th:nth-child(1) {
+  inline-size: 7rem;
+}
+
+.table-scroll--requests th:nth-child(4) {
+  inline-size: 6rem;
+}
+
+.table-scroll--requests th:nth-child(6) {
+  inline-size: 10rem;
+}
+
+/* The audit minimum leaves the free-text Note column at least 12rem. */
+.table-scroll--audit .data-table {
+  inline-size: max(100%, 52.5rem);
+}
+
+.table-scroll--audit th:nth-child(1) {
+  inline-size: 10rem;
+}
+
+.table-scroll--audit th:nth-child(2) {
+  inline-size: 6.5rem;
+}
+
+.table-scroll--audit th:nth-child(3) {
+  inline-size: 9rem;
+}
+
+.table-scroll--audit th:nth-child(4),
+.table-scroll--audit th:nth-child(5) {
+  inline-size: 7.5rem;
 }
 
 /* Vertical stacks */
@@ -380,10 +564,13 @@ thead th {
 }
 
 /* Details: label and value columns; each row wrapper joins them via subgrid,
-   so labels align across rows and bare dt/dd pairs lay out the same way. */
+   so labels align across rows and bare dt/dd pairs lay out the same way.
+   The label column has a fixed width, not its longest label's, so the reason
+   row shown only while information is awaited wraps its label onto two
+   lines instead of moving every value. */
 .field-list {
   display: grid;
-  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  grid-template-columns: 12rem minmax(0, 1fr);
   column-gap: 1.5rem;
 }
 
@@ -479,21 +666,39 @@ thead th {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Six columns cannot fit a phone without splitting words, so each table
-     scrolls sideways on its own; current browsers keep its table semantics. */
-  .data-table {
-    display: block;
-    overflow-x: auto;
-  }
-
-  /* The audit Note, the only free-text column, is last; a scrolling table can
-     afford it room instead of one word per line. */
-  .data-table td:last-child {
-    min-inline-size: 12rem;
-  }
-
   th,
   td {
     padding-inline: 0.5rem;
+  }
+}
+
+/* Wide screens. Once the content column holds a table's minimum (plus the
+   shell's 1.5rem padding each side), its wrapper stops scrolling, so the
+   header sticks to the page instead of to a wrapper that never scrolls up or
+   down. The table then just fills the column: a classic scrollbar narrows
+   the column below what the query assumes, and the table's minimum would
+   then push it past the column's edge. */
+@media (min-width: 48rem) {
+  .table-scroll--requests {
+    overflow-x: visible;
+  }
+
+  .table-scroll--requests .data-table {
+    inline-size: 100%;
+  }
+}
+
+@media (min-width: 55.5rem) {
+  .table-scroll--audit {
+    overflow-x: visible;
+  }
+
+  .table-scroll--audit .data-table {
+    inline-size: 100%;
+  }
+
+  /* With room to spare, Status keeps "Waiting for Information" on one line. */
+  .table-scroll--requests th:nth-child(5) {
+    inline-size: 13rem;
   }
 }
