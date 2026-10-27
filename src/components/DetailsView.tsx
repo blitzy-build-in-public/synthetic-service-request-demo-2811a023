@@ -39,6 +39,17 @@ export interface DetailsViewProps {
   id: string;
 }
 
+// TAB and LF are left out because the chip's pre-wrap white space already shows them as a gap or a line
+// break. The `u` flag matches whole code points, so an astral format character becomes one escape, not two.
+const INVISIBLE_CODE_POINTS = /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+function escapeInvisibleCodePoints(id: string): string {
+  return id.replace(INVISIBLE_CODE_POINTS, (match) => {
+    const codePoint = match.codePointAt(0);
+    return codePoint === undefined ? match : `⟨U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}⟩`;
+  });
+}
+
 // Submit messages describe the stored fields they were computed from, so they are tied to that exact
 // request snapshot. A successful edit or submit, and also a confirmed reset that replaces this request
 // while the view stays open, produces a new object, so stale messages never sit beside changed values.
@@ -51,11 +62,7 @@ type SubmitField = 'requesterName' | 'requestType' | 'description';
 
 const NO_ERRORS: FieldErrors = {};
 
-/**
- * One request's details: every field, the reason while information is awaited, the actions the current
- * role may perform, the inline edit form, and the full audit history in append order. An ID matching no
- * request shows `NotFound`.
- */
+/** Shows request fields, permitted actions, inline editing and append-order history, or `NotFound` for an unknown ID. */
 export function DetailsView({ id }: DetailsViewProps) {
   // Every hook runs before the not-found return, so the hook order never depends on the data.
   const { requests, role } = useAppState();
@@ -69,12 +76,14 @@ export function DetailsView({ id }: DetailsViewProps) {
   if (request === undefined) {
     // The decoded ID may carry spaces, as in " REQ-0001", which plain heading text would collapse into
     // what reads as an existing ID; the code element keeps them and shows where the ID starts and ends,
-    // and dir="auto" gives it its own base direction, isolated from the sentence around it.
+    // and dir="auto" gives it its own base direction, isolated from the sentence around it. Invisible and
+    // format code points show as ⟨U+XXXX⟩ escapes: unseen, a zero-width one would let the ID pass for an
+    // existing one, and a bidi control would reorder it.
     return (
       <NotFound
         message={
           <>
-            Request <code className="unknown-id" dir="auto">{id}</code> was not found.
+            Request <code className="unknown-id" dir="auto">{escapeInvisibleCodePoints(id)}</code> was not found.
           </>
         }
       />

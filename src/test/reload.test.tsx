@@ -20,7 +20,6 @@ import { STORAGE_KEY } from '../storage/localStore';
 
 const REQUEST_IDS = ['REQ-0001', 'REQ-0002', 'REQ-0003', 'REQ-0004'];
 
-// Cell positions in `readTableRows` output, in each table's column order.
 const LIST_ID = 0;
 const LIST_PRIORITY = 3;
 const LIST_STATUS = 4;

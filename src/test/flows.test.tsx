@@ -43,7 +43,6 @@ const VALID_FIELDS: CreateFields = {
   description: 'Fictional laptop stand for the demo.',
 };
 
-// Cell positions, left to right, of the list table and the audit history table.
 const LIST_COLUMN = { id: 0, requesterName: 1, requestType: 2, priority: 3, status: 4, lastUpdated: 5 } as const;
 const AUDIT_COLUMN = { timestamp: 0, role: 1, action: 2, from: 3, to: 4 } as const;
 
@@ -885,6 +884,27 @@ describe('UI edge cases', () => {
     expect(code?.getAttribute('dir')).toBe('auto');
   });
 
+  // Unseen, a zero-width or control code point lets an unknown ID pass for REQ-0001 and a bidi control
+  // reorders it, so each shows as an escape. TAB and LF already show as a gap or line break, and NBSP as a gap.
+  it.each([
+    ['#/requests/REQ-0001%E2%80%8B', 'REQ-0001⟨U+200B⟩'],
+    ['#/requests/%E2%80%AEREQ-0001', '⟨U+202E⟩REQ-0001'],
+    ['#/requests/%EF%BB%BFREQ-0001', '⟨U+FEFF⟩REQ-0001'],
+    ['#/requests/%E2%81%A6REQ%C2%A00001%E2%81%A9%E2%81%A9', '⟨U+2066⟩REQ\u00a00001⟨U+2069⟩⟨U+2069⟩'],
+    ['#/requests/REQ-0001%0D', 'REQ-0001⟨U+000D⟩'],
+    ['#/requests/%00REQ-0001', '⟨U+0000⟩REQ-0001'],
+    ['#/requests/REQ-0001%C2%85', 'REQ-0001⟨U+0085⟩'],
+    ['#/requests/REQ-0001%E2%80%A8', 'REQ-0001⟨U+2028⟩'],
+    ['#/requests/REQ-0001%E2%80%A9', 'REQ-0001⟨U+2029⟩'],
+    ['#/requests/REQ-0001%F3%A0%80%81', 'REQ-0001⟨U+E0001⟩'],
+    ['#/requests/REQ-0001%09', 'REQ-0001\t'],
+    ['#/requests/REQ-0001%0A', 'REQ-0001\n'],
+  ])('%s is reported with its unknown ID shown as %j', (hash, expected) => {
+    renderApp({ hash });
+    expect(viewHeading()).toBe(`Request ${expected} was not found.`);
+    expect(screen.getByRole('heading', { level: 1 }).querySelector('code')?.textContent).toBe(expected);
+  });
+
   it.each<OverLengthCase>([
     {
       label: 'Requester name',
@@ -1278,7 +1298,7 @@ interface TransitionFocusCase {
   readonly status: string;
 }
 
-/** Focuses `button` before clicking it, as keyboard and pointer activation both do. */
+/** Focuses `button` before activation so the test can verify where focus moves when that control disappears. */
 function press(button: HTMLElement): void {
   button.focus();
   fireEvent.click(button);
