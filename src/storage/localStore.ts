@@ -70,7 +70,8 @@ function isWithinLimit(value: string, limit: number): boolean {
   return countCharacters(value) <= limit;
 }
 
-// The domain stores these fields trimmed, so untrimmed or whitespace-only text is data the app never wrote.
+// The domain stores names, descriptions and notes trimmed, so untrimmed or whitespace-only text is data
+// the app never wrote.
 function isStoredText(value: unknown, limit: number): value is string {
   return typeof value === 'string' && value === value.trim() && isWithinLimit(value, limit);
 }
@@ -99,7 +100,7 @@ function parseAuditEntry(value: unknown): AuditEntry | null {
   if (note === undefined) {
     return entry;
   }
-  if (typeof note !== 'string' || note === '' || !isWithinLimit(note, LIMITS.note)) {
+  if (note === '' || !isStoredText(note, LIMITS.note)) {
     return null;
   }
   return { ...entry, note };

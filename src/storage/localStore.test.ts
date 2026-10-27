@@ -336,6 +336,19 @@ describe('request and audit entry shape on load', () => {
     { name: 'an entry with an empty note', request: draftWithEntryField('note', '') },
     { name: 'an entry with a null note', request: draftWithEntryField('note', null) },
     { name: 'an entry with a 1001-character note', request: makeWaiting('a'.repeat(1001)) },
+    // The domain stores notes trimmed too, so a reason with surrounding whitespace is text it never wrote.
+    ...[
+      { variant: 'a leading space', note: ' Please confirm which browser you are using.' },
+      { variant: 'a trailing space', note: 'Please confirm which browser you are using. ' },
+      {
+        variant: 'a leading tab and a trailing newline',
+        note: '\tPlease confirm which browser you are using.\n',
+      },
+      { variant: 'only whitespace', note: '   ' },
+    ].map(({ variant, note }) => ({
+      name: `an entry note with ${variant}`,
+      request: makeWaiting(note),
+    })),
     {
       name: 'an entry that is not an object',
       request: { ...makeDraft(), auditHistory: ['Created'] },
@@ -436,6 +449,13 @@ describe('load never writes', () => {
     {
       name: 'untrimmed-name unreadable',
       initial: { [STORAGE_KEY]: envelopeWith([draftWithField('requesterName', ' Riley Test ')]) },
+      kind: 'unreadable',
+    },
+    {
+      name: 'untrimmed-note unreadable',
+      initial: {
+        [STORAGE_KEY]: envelopeWith([makeWaiting(' Please confirm which browser you are using. ')]),
+      },
       kind: 'unreadable',
     },
     {
