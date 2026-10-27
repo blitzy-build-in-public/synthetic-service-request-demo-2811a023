@@ -78,7 +78,7 @@ npm run preview
 
 ## Limitations
 
-- Data lives in this one browser profile only. Clearing site data deletes it, and in private browsing it is lost when the window closes.
+- Data lives in this one browser profile only. Clearing site data deletes it, and in private browsing it is temporary: the browser clears it when the private-browsing session ends.
 - The role switch provides no security: anyone can act as either role, and stored data can be edited with the browser's developer tools.
 - No concurrent editing: nothing syncs between tabs, browsers or users. Changes made in another tab are not picked up, and the last write wins.
 - Not designed for production use or for real personal data.
