@@ -417,6 +417,50 @@ describe('AC6 reset restores samples', () => {
   });
 });
 
+describe('Header reset prompt closing', () => {
+  it('Escape inside the open prompt closes it like Cancel and returns focus to Reset demo data', () => {
+    const { store } = renderApp();
+    createRequest(VALID_FIELDS);
+    const before = store.getState();
+    const storedBefore = window.localStorage.getItem(STORAGE_KEY);
+    expect(storedBefore).not.toBeNull();
+    const trigger = screen.getByRole('button', { name: 'Reset demo data' });
+    fireEvent.click(trigger);
+    const confirm = within(screen.getByRole('group', { name: RESET_PROMPT })).getByRole('button', {
+      name: 'Confirm reset',
+    });
+    confirm.focus();
+
+    // Tabbing through the prompt must not dismiss it; only Escape does.
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(screen.queryByRole('group', { name: RESET_PROMPT })).not.toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.keyDown(confirm, { key: 'Escape' });
+
+    expect(screen.queryByRole('group', { name: RESET_PROMPT })).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+    expect(store.getState()).toBe(before);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(storedBefore);
+  });
+
+  it('a route change closes the open prompt and resets nothing', () => {
+    const { store } = renderApp();
+    const before = store.getState();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset demo data' }));
+    expect(screen.queryByRole('group', { name: RESET_PROMPT })).not.toBeNull();
+
+    goToHash('#/requests/REQ-0002');
+
+    expect(viewHeading()).toBe('REQ-0002');
+    expect(screen.queryByRole('group', { name: RESET_PROMPT })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reset demo data' }).getAttribute('aria-expanded')).toBe('false');
+    expect(store.getState()).toBe(before);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
 describe('AC7 role and demo labelling', () => {
   it.each([
     ['list', '#/', 'Service requests'],
@@ -993,8 +1037,14 @@ describe('UI edge cases', () => {
     expect(within(alert).queryByText(`${sentence} ${LOAD_ISSUE_ADVICE}`)).not.toBeNull();
     expect(screen.queryByText('No requests yet')).not.toBeNull();
     expect(storage.getItem(STORAGE_KEY)).toBe(raw);
+    // The confirmation opens inside the alert, so the alert is not atomic: opening it announces the
+    // added prompt alone instead of re-reading the whole alert.
+    expect(alert.getAttribute('aria-atomic')).toBe('false');
 
-    confirmReset(alert, 'Reset to sample data');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Reset to sample data' }));
+    const prompt = within(alert).getByRole('group', { name: RESET_PROMPT });
+    expect(prompt.closest('[role="alert"]')).toBe(alert);
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Confirm reset' }));
 
     expect(screen.queryByRole('alert')).toBeNull();
     expect(column(readTableRows(listTable()), LIST_COLUMN.id)).toEqual(SAMPLE_IDS);
@@ -1002,22 +1052,44 @@ describe('UI edge cases', () => {
     expect(store.getState().loadIssue).toBeNull();
   });
 
-  it('a full storage keeps a new request in memory and shows the storage warning', () => {
+  it('a full storage keeps a new request in memory and writes the warning into the status region once', () => {
     const storage = createMemoryStorage({ failOnSet: 'quota' });
     const { store } = renderApp({ storage });
-    expect(screen.queryByRole('status')).toBeNull();
+    // A status region is announced only when text is written into it, so it exists, empty, before the failure.
+    const status = screen.getByRole('status');
+    expect(status.matches(':empty')).toBe(true);
 
     createRequest(VALID_FIELDS);
 
     expect(viewHeading()).toBe('REQ-0004');
-    expect(screen.getByRole('status').textContent).toBe(STORAGE_WARNING);
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status.textContent).toBe(STORAGE_WARNING);
     expect(store.getState().requests).toHaveLength(4);
+    expect(storage.getItem(STORAGE_KEY)).toBeNull();
+
+    // A second failed save keeps the same text node, so the warning is not announced again.
+    const warningText = status.firstChild;
+    clickAction('Submit');
+
+    expect(detailsText('Status')).toBe('Submitted');
+    expect(screen.getByRole('status')).toBe(status);
+    expect(status.childNodes).toHaveLength(1);
+    expect(status.firstChild).toBe(warningText);
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it('blocked storage starts from the samples with the storage warning shown', () => {
+  it('blocked storage starts from the samples with the storage warning written into the mounted status region', () => {
+    // Mutations recorded from before the first render show whether the warning is written into a region
+    // that already exists, which is what gets it announced, or is inserted together with the region.
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, { childList: true, subtree: true });
     renderApp({ getStorage: unavailableStorageGetter });
-    expect(screen.getByRole('status').textContent).toBe(STORAGE_WARNING);
+    const records = observer.takeRecords();
+    observer.disconnect();
+
+    const status = screen.getByRole('status');
+    expect(status.textContent).toBe(STORAGE_WARNING);
+    expect(records.some((record) => record.target === status && record.addedNodes.length > 0)).toBe(true);
     expect(column(readTableRows(listTable()), LIST_COLUMN.id)).toEqual(SAMPLE_IDS);
   });
 

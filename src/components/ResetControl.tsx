@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { useAppStore } from '../state/StoreContext';
 
 /** Props of `ResetControl`. */
@@ -7,7 +8,7 @@ export interface ResetControlProps {
   label?: string;
 }
 
-/** Button that replaces every request with the three samples only after an inline "Confirm reset"; "Cancel" changes nothing. */
+/** Button that replaces every request with the three samples only after an inline "Confirm reset"; "Cancel" or Escape changes nothing. */
 export function ResetControl({ label = 'Reset demo data' }: ResetControlProps) {
   const store = useAppStore();
   // State and ids stay local, so the header control and the storage notice's control open independently.
@@ -29,8 +30,17 @@ export function ResetControl({ label = 'Reset demo data' }: ResetControlProps) {
     close();
   }
 
+  // Escape dismisses the open prompt as Cancel does. Listening on the wrapper hears the key only while
+  // focus is inside this control, so the header and notice prompts close independently and no page-level
+  // listener is needed.
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (confirming && event.key === 'Escape') {
+      close();
+    }
+  }
+
   return (
-    <div className="reset-control">
+    <div className="reset-control" onKeyDown={handleKeyDown}>
       <button
         ref={triggerRef}
         type="button"

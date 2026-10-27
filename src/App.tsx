@@ -76,7 +76,8 @@ export function App() {
         </a>
         <div className="header-controls">
           <RoleSwitch />
-          <ResetControl />
+          {/* Keyed by route, so an open reset prompt closes with the view it was opened on. */}
+          <ResetControl key={routeKey} />
         </div>
       </header>
       <StorageNotice />

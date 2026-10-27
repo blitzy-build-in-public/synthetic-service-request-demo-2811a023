@@ -222,7 +222,6 @@ thead th {
 
 /* Wrapping rows */
 .app-header,
-.header-controls,
 .role-switch,
 .button-row {
   display: flex;
@@ -232,12 +231,14 @@ thead th {
 }
 
 /* Shell */
+/* The gutter grows with the viewport from 1rem to 1.5rem, so no width makes
+   it jump. */
 .app-shell {
   gap: 1rem;
   max-inline-size: 64rem;
   margin-inline: auto;
   padding-block: 1.5rem 3rem;
-  padding-inline: 1.5rem;
+  padding-inline: clamp(1rem, 3.75vw, 1.5rem);
 }
 
 /* Out of flow, so it adds no gap to the shell, and clipped away until it
@@ -263,8 +264,11 @@ thead th {
   border-radius: var(--radius);
 }
 
+/* Top-aligned, so the title stays put when the open reset prompt makes the
+   controls taller. */
 .app-header {
   justify-content: space-between;
+  align-items: flex-start;
   gap: 1rem;
   padding-block-end: 1rem;
   border-block-end: 1px solid var(--color-border);
@@ -284,33 +288,37 @@ thead th {
   text-decoration: none;
 }
 
-/* The auto margin keeps the controls at the end when they wrap below the title. */
+/* A grid rather than a wrapping row, so the role switch and the reset trigger
+   share one row instead of wrapping one by one into a staircase. The first
+   column may shrink, so the role label wraps before anything overflows. The
+   auto margin keeps the controls at the end when they wrap below the title. */
 .header-controls {
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto;
+  align-items: start;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
   margin-inline-start: auto;
 }
 
-/* The confirmation opens below its trigger. In the header it floats, so
-   opening it does not push the controls onto a new row. */
+/* The confirmation opens below its trigger and in flow, so it pushes the page
+   down instead of covering what follows, where the next focused control may
+   sit. In the header the wrapper, a plain div with no role, leaves the box
+   tree, so the trigger and the panel become grid items of the controls: the
+   panel spans both columns at the end, and as it is narrower than they are,
+   opening it moves neither control. */
 .reset-control {
   align-items: flex-start;
   gap: 0.5rem;
 }
 
 .app-header .reset-control {
-  position: relative;
+  display: contents;
 }
 
 .app-header .confirm-panel {
-  position: absolute;
-  inset-block-start: calc(100% + 0.5rem);
-  inset-inline-end: 0;
-  z-index: 1;
-  inline-size: 24rem;
-  max-inline-size: calc(100vw - 2rem);
-  box-shadow: 0 4px 12px #1f232826;
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 
 .confirm-panel {
@@ -343,6 +351,16 @@ thead th {
 [role='status'] {
   background-color: #eef6ff;
   border-inline-start-color: var(--color-accent);
+}
+
+/* The storage-warning status region is rendered before its message, so the
+   message written into it is announced. While empty it is out of flow and
+   has no box, so it adds no gap to the shell; display: none would also drop
+   it from the accessibility tree, and the warning would go unannounced. */
+.notice:empty {
+  position: absolute;
+  padding: 0;
+  border: 0;
 }
 
 .view {
@@ -434,27 +452,29 @@ thead th {
   color: var(--color-muted);
 }
 
-/* Narrow screens */
-@media (max-width: 40rem) {
-  .app-shell {
-    padding-inline: 1rem;
-  }
-
+/* Narrow header: below 45rem the controls no longer fit one row under the
+   title (they need about 44rem of viewport with system fonts), so the header
+   stacks, left-aligned, and the wrapper returns as a column that opens the
+   reset prompt under its trigger. */
+@media (max-width: 45rem) {
   .app-header {
     flex-direction: column;
     align-items: flex-start;
   }
 
   .header-controls {
-    justify-content: flex-start;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 1rem;
     margin-inline-start: 0;
   }
 
-  .app-header .confirm-panel {
-    inset-inline-start: 0;
-    inset-inline-end: auto;
+  .app-header .reset-control {
+    display: flex;
   }
+}
 
+/* Narrow screens */
+@media (max-width: 40rem) {
   .field-list {
     grid-template-columns: minmax(0, 1fr);
   }
