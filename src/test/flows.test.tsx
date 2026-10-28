@@ -637,6 +637,10 @@ interface SaveOnceCase {
   readonly hash: string;
   /** Opens the form and enters otherwise valid values with `requesterName` as the name. */
   readonly open: (requesterName: string) => void;
+  /** The control that opens the form, which the open form takes the place of. */
+  readonly opener: () => HTMLElement;
+  /** The table on the form's view that one save would change. */
+  readonly table: () => HTMLElement;
   /** The request that one save creates or edits. */
   readonly id: string;
   /** Every request ID the store holds after one save. */
@@ -653,6 +657,8 @@ const SAVE_ONCE_CASES: readonly SaveOnceCase[] = [
       openCreateForm();
       enterCreateFormValues({ ...VALID_FIELDS, requesterName });
     },
+    opener: () => screen.getByRole('button', { name: 'New request' }),
+    table: listTable,
     id: 'REQ-0004',
     ids: [...SAMPLE_IDS, 'REQ-0004'],
     actions: ['Created'],
@@ -664,6 +670,8 @@ const SAVE_ONCE_CASES: readonly SaveOnceCase[] = [
       clickAction('Edit');
       enterEditFormValues({ ...EDITED_VALUES, requesterName });
     },
+    opener: () => within(actionsRegion()).getByRole('button', { name: 'Edit' }),
+    table: auditTable,
     id: 'REQ-0001',
     ids: SAMPLE_IDS,
     actions: ['Created', 'Edited'],
@@ -823,6 +831,37 @@ describe('Draft edit form and cancellation', () => {
 
     expectSavedOnce(store, testCase);
   });
+
+  it.each(SAVE_ONCE_CASES)(
+    'the second click of a double-click on "$button" or Cancel is ignored, and a single click then saves once',
+    (testCase) => {
+      const { store } = renderApp({ hash: testCase.hash });
+      const requestsBefore = store.getState().requests;
+      const rowsBefore = readTableRows(testCase.table());
+
+      // The form opens in place of its opener, so the second click of a double-click lands on a form button.
+      fireEvent.click(testCase.opener(), { detail: 1 });
+      fireEvent.click(screen.getByRole('button', { name: testCase.button }), { detail: 2 });
+
+      expect(screen.queryByRole('button', { name: testCase.button })).not.toBeNull();
+      expect(store.getState().requests).toBe(requestsBefore);
+      expect(readTableRows(testCase.table())).toEqual(rowsBefore);
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      fireEvent.change(labelledControl('Requester name', HTMLInputElement), {
+        target: { value: VALID_FIELDS.requesterName },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }), { detail: 2 });
+
+      expect(screen.queryByRole('button', { name: testCase.button })).not.toBeNull();
+      expect(labelledControl('Requester name', HTMLInputElement).value).toBe(VALID_FIELDS.requesterName);
+      expect(store.getState().requests).toBe(requestsBefore);
+
+      fireEvent.click(screen.getByRole('button', { name: testCase.button }), { detail: 1 });
+
+      expectSavedOnce(store, testCase);
+    },
+  );
 });
 
 /** One blank-note case: which role opens which note form on which request, and what it must report. */
@@ -1382,6 +1421,37 @@ function messageSlot(control: HTMLElement): Element {
   return slot;
 }
 
+/** A note form, with the audit action and status that one accepted send leaves. */
+interface NoteSendCase extends NoteFormCase {
+  readonly auditAction: string;
+  readonly status: string;
+}
+
+const NOTE_SEND_CASES: readonly NoteSendCase[] = [
+  { ...REASON_FORM, auditAction: 'Information requested', status: 'Waiting for Information' },
+  { ...INFORMATION_FORM, auditAction: 'Information supplied', status: 'In Review' },
+];
+
+/** Asserts that exactly one send of `note` followed `historyBefore`, and that no refusal is shown. */
+function expectNoteSentOnce(
+  store: AppStore,
+  testCase: NoteSendCase,
+  historyBefore: ServiceRequest['auditHistory'],
+  note: string,
+): void {
+  expect(screen.queryByLabelText(testCase.label)).toBeNull();
+  expect(detailsText('Status')).toBe(testCase.status);
+  const history = storedRequest(store, testCase.id).auditHistory;
+  expect(history.slice(0, historyBefore.length)).toEqual(historyBefore);
+  expect(history.slice(historyBefore.length).map((entry) => [entry.action, entry.note])).toEqual([
+    [testCase.auditAction, note],
+  ]);
+  expect(column(readTableRows(auditTable()), AUDIT_COLUMN.action)).toEqual(history.map((entry) => entry.action));
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(store.getState().refusal).toBeNull();
+  expect(readEnvelope(window.localStorage)).toEqual({ version: 1, requests: store.getState().requests });
+}
+
 describe('Accessibility announcements and focus', () => {
   it.each([
     { mode: 'create', hash: '#/', open: 'New request', save: 'Create draft' },
@@ -1719,6 +1789,45 @@ describe('Accessibility announcements and focus', () => {
     expect(labelledControl(REASON_FORM.label, HTMLTextAreaElement).value).toBe('');
     expect(replacement.getAttribute('aria-expanded')).toBe('true');
   });
+
+  it.each(NOTE_SEND_CASES)('two $send clicks in one task send the note once and show no refusal', (testCase) => {
+    const store = renderNoteForm(testCase);
+    const historyBefore = storedRequest(store, testCase.id).auditHistory;
+    const note = 'A fictional note sent twice in one task.';
+    fireEvent.change(screen.getByLabelText(testCase.label), { target: { value: note } });
+
+    submitTwiceInOneTask(testCase.send);
+
+    expectNoteSentOnce(store, testCase, historyBefore, note);
+  });
+
+  it.each(NOTE_SEND_CASES)(
+    'the second click of a double-click on $send or Cancel leaves the $label form open and sends nothing',
+    (testCase) => {
+      const { store } = renderApp({ hash: `#/requests/${testCase.id}` });
+      switchRole(testCase.role);
+      fireEvent.click(actionButton(testCase.action), { detail: 1 });
+      const field = labelledControl(testCase.label, HTMLTextAreaElement);
+      const note = 'A fictional note typed before a double-click.';
+      fireEvent.change(field, { target: { value: note } });
+      const before = store.getState();
+      const historyBefore = storedRequest(store, testCase.id).auditHistory;
+
+      fireEvent.click(screen.getByRole('button', { name: testCase.send }), { detail: 2 });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }), { detail: 2 });
+
+      expect(labelledControl(testCase.label, HTMLTextAreaElement)).toBe(field);
+      expect(field.value).toBe(note);
+      expect(field.hasAttribute('aria-invalid')).toBe(false);
+      expect(actionButton(testCase.action).getAttribute('aria-expanded')).toBe('true');
+      expect(store.getState()).toBe(before);
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: testCase.send }), { detail: 1 });
+
+      expectNoteSentOnce(store, testCase, historyBefore, note);
+    },
+  );
 });
 
 describe('User text direction', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 // React's SubmitEvent, not FormEvent: the pinned @types/react deprecates FormEvent and types onSubmit with SubmitEvent.
 import type { ChangeEvent, MouseEvent, SubmitEvent } from 'react';
 import { availableActions, isTerminal } from '../domain/transitions';
@@ -88,6 +88,16 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
   const noteOpenerRef = useRef<HTMLButtonElement | null>(null);
   const noteFormRef = useRef<HTMLFormElement>(null);
   const noteFieldRef = useRef<HTMLTextAreaElement>(null);
+  // The store changes at once but the panel re-renders only when React commits, so a second send in the
+  // same task (two scripted clicks) would dispatch the note again against the new status and show a false
+  // refusal. Every send commits a render: success remounts the panel through its key, a field error sets
+  // `sendAttempt`, and a refusal or a missing request publishes a snapshot that re-renders the parent.
+  // Releasing after each commit ignores only that second send, while a form left open by a field error
+  // still accepts the next one.
+  const submitPending = useRef(false);
+  useLayoutEffect(() => {
+    submitPending.current = false;
+  });
 
   // The form mounts in the commit that sets `openRule`, so it can be revealed only after that commit.
   useEffect(() => {
@@ -162,6 +172,10 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
     if (command === null) {
       return;
     }
+    if (submitPending.current) {
+      return;
+    }
+    submitPending.current = true;
     const result = store.dispatch(command);
     if (result.ok) {
       setOpenRule(null);
@@ -243,11 +257,27 @@ export function ActionPanel({ request, role, onEdit, onSubmitErrors, onTransitio
               ) : null}
             </div>
           </div>
+          {/* Opening the form can scroll Send or Cancel under the pointer, so the second click of a
+              double-click on the opener would send the note or close the form. Only a first click acts,
+              so Send cancels the submission a later click starts; keyboard and programmatic clicks
+              report a count of 0. */}
           <div className="button-row">
-            <button type="submit">{copy.send}</button>
+            <button
+              type="submit"
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                if (event.detail > 1) {
+                  event.preventDefault();
+                }
+              }}
+            >
+              {copy.send}
+            </button>
             <button
               type="button"
-              onClick={() => {
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                if (event.detail > 1) {
+                  return;
+                }
                 setOpenRule(null);
                 noteOpenerRef.current?.focus();
               }}

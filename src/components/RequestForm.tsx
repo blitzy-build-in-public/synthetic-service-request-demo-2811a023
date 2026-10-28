@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 // React's SubmitEvent, not FormEvent: the pinned @types/react deprecates FormEvent and types onSubmit with SubmitEvent.
-import type { ChangeEvent, SubmitEvent } from 'react';
+import type { ChangeEvent, MouseEvent, SubmitEvent } from 'react';
 import { PRIORITIES, REQUEST_TYPES } from '../domain/model';
 import type { CreateFields, EditFields } from '../domain/model';
 import type { FieldErrors } from '../domain/validation';
@@ -173,9 +173,30 @@ export function RequestForm(props: RequestFormProps) {
           {errorMessage('priority')}
         </div>
       )}
+      {/* The form opens in place of the control that was clicked, so the second click of a double-click
+          would press whichever of these buttons now sits under the pointer. Only a first click acts;
+          keyboard activation, implicit submission and programmatic clicks report a count of 0. */}
       <div className="button-row">
-        <button type="submit">{props.mode === 'create' ? 'Create draft' : 'Save changes'}</button>
-        <button type="button" onClick={props.onCancel}>
+        <button
+          type="submit"
+          onClick={(event: MouseEvent<HTMLButtonElement>) => {
+            // Cancelling the click cancels the submission it would start.
+            if (event.detail > 1) {
+              event.preventDefault();
+            }
+          }}
+        >
+          {props.mode === 'create' ? 'Create draft' : 'Save changes'}
+        </button>
+        <button
+          type="button"
+          onClick={(event: MouseEvent<HTMLButtonElement>) => {
+            if (event.detail > 1) {
+              return;
+            }
+            props.onCancel();
+          }}
+        >
           Cancel
         </button>
       </div>
