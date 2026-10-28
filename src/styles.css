@@ -1,0 +1,717 @@
+/*
+  The app's only stylesheet: system fonts and no external resources, so it
+  loads nothing further. Element and attribute rules come first so unclassed
+  markup stays readable; the classes after them are the component contract.
+*/
+
+/* Base */
+:root {
+  color-scheme: light;
+  --color-text: #1f2328;
+  --color-muted: #59636e;
+  --color-border: #d1d9e0;
+  --color-control-border: #6e7781;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f8fa;
+  --color-accent: #0550ae;
+  --color-error: #b42318;
+  --color-warning-bg: #fff4c2;
+  --radius: 6px;
+  --control-size: 2.75rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+}
+
+/* Containers space their children with gap, so text blocks carry no margins. */
+h1,
+h2,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+/* Headings can show a request ID of any length, typed into the hash or read
+   from storage, so an unbroken one wraps instead of widening the page. */
+h1 {
+  font-size: 1.75rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+h2 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A stored timestamp whose local year lies outside 0 to 9999 is shown as its
+   raw ISO text, which is longer than the timestamp columns and has no break
+   opportunity, so it may break anywhere inside its cell rather than run into
+   the next one. The formatted text keeps to one line. */
+time.raw-timestamp {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+label,
+dt,
+th {
+  font-weight: 600;
+}
+
+/* Controls */
+button,
+input,
+select,
+textarea {
+  min-block-size: var(--control-size);
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  font: inherit;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+button {
+  min-inline-size: var(--control-size);
+  font-weight: 600;
+  background-color: var(--color-surface-muted);
+  cursor: pointer;
+}
+
+button:disabled,
+button[aria-disabled='true'] {
+  color: var(--color-muted);
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  pointer-events: none;
+}
+
+textarea {
+  min-block-size: 6rem;
+  resize: vertical;
+}
+
+/* Native select appearance locks line-height to normal and insets the text
+   4px past the padding, so selects drop it and draw their own arrow, sized so
+   its edges land on whole pixels; the option list and keyboard stay native. */
+select {
+  appearance: none;
+  padding-inline-end: 2rem;
+  background-image: conic-gradient(from -45deg at 50% 100%, currentcolor 90deg, transparent 0);
+  background-position: right 0.75rem center;
+  background-size: 0.6875rem 0.375rem;
+  background-repeat: no-repeat;
+}
+
+/* Forced colours drop gradient images, so the native arrow comes back there,
+   and the start padding gives back its 4px text inset. */
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    padding-inline: calc(0.75rem - 4px) 0.75rem;
+  }
+}
+
+/* The inset shadow thickens the error border without shifting layout. */
+[aria-invalid='true'] {
+  border-color: var(--color-error);
+  box-shadow: inset 0 0 0 1px var(--color-error);
+}
+
+/* Forced colours repaint the error colour and drop the shadow, so the invalid
+   state changes the border's shape instead; the outline stays free for the
+   focus ring. */
+@media (forced-colors: active) {
+  [aria-invalid='true'] {
+    border-width: 3px;
+    border-style: double;
+  }
+}
+
+/* Focus scrolling brings only the border box into view; the margin brings the
+   ring outside it (a 3px outline at a 2px offset) into view as well. */
+:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+  scroll-margin-block: 0.5rem;
+}
+
+/* The view and the details heading take focus only from script, so the next
+   Tab starts inside them. The view is a landmark, not a control, so it shows
+   no ring; the heading's box shrinks to its text, so its ring frames the text
+   rather than a bar across the column. */
+main[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
+h1[tabindex='-1'] {
+  inline-size: fit-content;
+  max-inline-size: 100%;
+}
+
+@media (hover: hover) {
+  /* The fill alone barely changes, so the border darkens too; the pressed
+     state stays distinct through its darker fill. Disabled buttons are
+     excluded so they keep looking disabled. */
+  button:not(:disabled, [aria-disabled='true']):hover {
+    background-color: #eaeef2;
+    border-color: var(--color-text);
+  }
+
+  /* The darker blue alone barely changes, so the underline thickens too. */
+  a:hover {
+    color: #033d8b;
+    text-decoration-thickness: 0.125em;
+  }
+
+  /* The shorthand resets the thickness, so the title's pressed underline
+     stays thicker than its hover one. */
+  .app-title:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
+
+  /* Invalid fields are left out so their border stays the error red. */
+  input:not(:disabled, [aria-invalid='true']):hover,
+  select:not(:disabled, [aria-invalid='true']):hover,
+  textarea:not(:disabled, [aria-invalid='true']):hover {
+    border-color: var(--color-text);
+  }
+
+  /* An invalid field keeps its red and thickens it instead; the inset shadow
+     shifts no layout. */
+  [aria-invalid='true']:not(:disabled):hover {
+    box-shadow: inset 0 0 0 2px var(--color-error);
+  }
+}
+
+/* Pressed states sit outside the hover query so touch and keyboard presses
+   show them, and after the hover rules so they win while hovered. Disabled
+   buttons are excluded so they keep looking disabled; the border is not
+   transitioned, so even a quick click shows it. */
+button:not(:disabled, [aria-disabled='true']):active {
+  background-color: var(--color-border);
+  border-color: var(--color-text);
+}
+
+a:active {
+  color: var(--color-text);
+  text-decoration-thickness: 0.125em;
+}
+
+.app-title:active {
+  text-decoration: underline;
+  text-decoration-thickness: 0.125em;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button,
+  a {
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+  }
+}
+
+/* Tables and field values keep the line breaks and runs of spaces as stored,
+   so they show user text exactly as the edit form holds it. Cells break only
+   words too long for their column, such as an unbroken name, so short words
+   never split; field values may break anywhere. Borders stay separate
+   because a sticky header loses its top and bottom lines to the collapsed
+   model; every cell draws its right and bottom edges, first cells their left
+   and header cells their top, a single-line grid. */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+th,
+td {
+  padding-block: 0.5rem;
+  padding-inline: 0.75rem;
+  text-align: start;
+  vertical-align: top;
+  /* The side borders are physical, not logical: a cell with dir="auto" takes
+     its direction from its text, so a logical side would move its grid line
+     to the other edge for right-to-left text. Columns follow the table's
+     direction, which is always the page's left to right. */
+  border-right: 1px solid var(--color-border);
+  border-block-end: 1px solid var(--color-border);
+  overflow-wrap: break-word;
+}
+
+th:first-child,
+td:first-child {
+  border-left: 1px solid var(--color-border);
+}
+
+th,
+td,
+dd {
+  white-space: pre-wrap;
+}
+
+dd {
+  overflow-wrap: anywhere;
+}
+
+/* The link runs from its cell's top edge for at least a control's height, a
+   full-size touch target, while its text keeps the row's top line; the
+   inline padding leaves the inset focus ring room beside the text. The ID
+   column fits any five-digit ID on one line. A longer stored one wraps
+   inside its cell rather than run into the next column: the box shrinks only
+   to its longest unbreakable run, and the cell's break-word leaves the whole
+   digit run unbreakable, so the link may break anywhere. A box whose ID fits
+   keeps its width, so that ID stays whole. */
+td a {
+  display: inline-block;
+  min-block-size: var(--control-size);
+  padding-block-start: 0.5rem;
+  padding-inline: 0.25rem;
+  margin-block: -0.5rem;
+  margin-inline: -0.25rem;
+  overflow-wrap: anywhere;
+}
+
+/* The scroll margin, two header lines high, keeps a link reached by scrolling
+   up clear of the sticky header; the class outranks the general focus-ring
+   margin, which would let the header cover the link. */
+.data-table td a {
+  scroll-margin-block-start: 4.5rem;
+}
+
+/* Column labels stay in view while a long table scrolls the page; the
+   opaque background hides the rows passing beneath. Inside a wrapper that
+   scrolls sideways the header holds still, as that wrapper never scrolls
+   up or down. */
+thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background-color: var(--color-surface-muted);
+  border-block-start: 1px solid var(--color-border);
+}
+
+/* Fixed layout takes the column widths from the header row alone, so a long
+   value or an added row never moves the columns. */
+.data-table {
+  inline-size: 100%;
+  table-layout: fixed;
+}
+
+/* Each table scrolls sideways inside its wrapper whenever the content column
+   is narrower than the table's minimum, so the page itself never does. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* A scrolling wrapper clips whatever lies outside it, so rings on table
+   content are drawn inset. The table's own ring goes on the wrapper, outside
+   it, since the sticky header would paint over a ring inset in the table.
+   The table's ring is removed under the same :has() test that draws the
+   wrapper's, so a browser without :has() drops both rules and keeps the
+   table's own ring. */
+.table-scroll :focus-visible {
+  outline-offset: -3px;
+}
+
+.table-scroll:has(> .data-table:focus-visible) {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.table-scroll:has(> .data-table:focus-visible) > .data-table {
+  outline: none;
+}
+
+/* Focus scrolling brings only the table's own box into view, and the
+   wrapper's ring lies 5px beyond it, so the margins leave room for the ring.
+   Below the table the ring also clears the wrapper's horizontal scrollbar,
+   which classic scrollbars make up to 17px tall. */
+.table-scroll > .data-table {
+  scroll-margin-block: 0.5rem calc(0.5rem + 17px);
+}
+
+/* Widths go to the header cells by position, which holds because each
+   table's columns come in one fixed order. Columns without a width share
+   what is left equally; each table's minimum keeps that share wide enough
+   for whole words such as "Information" and "Placeholder". */
+.table-scroll--requests .data-table {
+  inline-size: max(100%, 45rem);
+}
+
+.table-scroll--requests th:nth-child(1) {
+  inline-size: 7rem;
+}
+
+.table-scroll--requests th:nth-child(4) {
+  inline-size: 6rem;
+}
+
+.table-scroll--requests th:nth-child(6) {
+  inline-size: 10rem;
+}
+
+/* The audit minimum leaves the free-text Note column at least 12rem. */
+.table-scroll--audit .data-table {
+  inline-size: max(100%, 52.5rem);
+}
+
+.table-scroll--audit th:nth-child(1) {
+  inline-size: 10rem;
+}
+
+.table-scroll--audit th:nth-child(2) {
+  inline-size: 6.5rem;
+}
+
+.table-scroll--audit th:nth-child(3) {
+  inline-size: 9rem;
+}
+
+.table-scroll--audit th:nth-child(4),
+.table-scroll--audit th:nth-child(5) {
+  inline-size: 7.5rem;
+}
+
+/* Vertical stacks */
+.app-shell,
+.view,
+.notice,
+[role='alert'],
+[role='status'],
+.reset-control,
+.confirm-panel,
+.action-panel,
+.request-form,
+.note-form,
+.form-field,
+.empty-state,
+.field-list dd {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Wrapping rows */
+.app-header,
+.role-switch,
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Shell */
+/* The gutter grows with the viewport from 1rem to 1.5rem, so no width makes
+   it jump. */
+.app-shell {
+  gap: 1rem;
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  padding-block: 1.5rem 3rem;
+  padding-inline: clamp(1rem, 3.75vw, 1.5rem);
+}
+
+/* Out of flow, so it adds no gap to the shell, and clipped away until it
+   takes keyboard focus; clip-path keeps it in the tab order and the
+   accessibility tree. */
+.skip-link {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 2;
+}
+
+.skip-link:not(:focus) {
+  clip-path: inset(50%);
+}
+
+.demo-banner {
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  font-weight: 600;
+  background-color: var(--color-warning-bg);
+  border: 2px solid #9a6700;
+  border-radius: var(--radius);
+}
+
+/* Top-aligned, so the title stays put when the open reset prompt makes the
+   controls taller. */
+.app-header {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-block-end: 1rem;
+  border-block-end: 1px solid var(--color-border);
+}
+
+.app-title,
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--control-size);
+}
+
+.app-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+/* A grid rather than a wrapping row, so the role switch and the reset trigger
+   share one row instead of wrapping one by one into a staircase. The first
+   column may shrink, so the role label wraps before anything overflows. The
+   auto margin keeps the controls at the end when they wrap below the title. */
+.header-controls {
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto;
+  align-items: start;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+/* The confirmation opens below its trigger and in flow, so it pushes the page
+   down instead of covering what follows, where the next focused control may
+   sit. In the header the wrapper, a plain div with no role, leaves the box
+   tree, so the trigger and the panel become grid items of the controls: the
+   panel spans both columns at the end, and as it is narrower than they are,
+   opening it moves neither control. */
+.reset-control {
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.app-header .reset-control {
+  display: contents;
+}
+
+.app-header .confirm-panel {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.confirm-panel {
+  max-inline-size: 24rem;
+  padding: 0.75rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+/* Notices: role="alert" and role="status" fall back to these styles. */
+.notice,
+[role='alert'],
+[role='status'] {
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-inline-start-width: 4px;
+  border-radius: var(--radius);
+}
+
+.notice--alert,
+[role='alert'] {
+  background-color: #fef3f2;
+  border-inline-start-color: var(--color-error);
+}
+
+.notice--status,
+[role='status'] {
+  background-color: #eef6ff;
+  border-inline-start-color: var(--color-accent);
+}
+
+/* The storage-warning status region is rendered before its message, so the
+   message written into it is announced. While empty it is out of flow and
+   has no box, so it adds no gap to the shell; display: none would also drop
+   it from the accessibility tree, and the warning would go unannounced. */
+.notice:empty {
+  position: absolute;
+  padding: 0;
+  border: 0;
+}
+
+.view {
+  gap: 1.25rem;
+}
+
+/* An unknown ID is shown as typed: spaces stay visible instead of collapsing,
+   and the box marks where the ID starts and ends, so " REQ-0001" cannot pass
+   for REQ-0001. It wraps with its heading. */
+.unknown-id {
+  padding-inline: 0.25em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+/* Details: label and value columns; each row wrapper joins them via subgrid,
+   so labels align across rows and bare dt/dd pairs lay out the same way.
+   The label column has a fixed width, not its longest label's, so the reason
+   row shown only while information is awaited wraps its label onto two
+   lines instead of moving every value. */
+.field-list {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  column-gap: 1.5rem;
+}
+
+.field-list > div {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  row-gap: 0.25rem;
+  padding-block: 0.5rem;
+}
+
+.field-list > div + div {
+  border-block-start: 1px solid var(--color-border);
+}
+
+.field-list dd,
+.form-field {
+  gap: 0.25rem;
+}
+
+/* Forms */
+.request-form,
+.note-form {
+  gap: 1rem;
+  max-inline-size: 40rem;
+  padding: 1rem;
+  background-color: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  inline-size: 100%;
+}
+
+.field-error {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-error);
+}
+
+/* A field's message slot is a live region rendered before any message, so
+   the message a failed save inserts is announced. While empty it is out of
+   flow and adds no gap under its control; display: none would also drop it
+   from the accessibility tree, and the message would go unannounced. */
+.field-error-slot:empty {
+  position: absolute;
+}
+
+/* Empty state and supporting copy */
+.empty-state {
+  align-items: center;
+  padding-block: 2rem;
+  padding-inline: 1rem;
+  color: var(--color-muted);
+  text-align: center;
+  background-color: var(--color-surface-muted);
+  border: 1px dashed var(--color-control-border);
+  border-radius: var(--radius);
+}
+
+.hint {
+  font-style: italic;
+  color: var(--color-muted);
+}
+
+/* Narrow header: below 45rem the controls no longer fit one row under the
+   title (they need about 44rem of viewport with system fonts), so the header
+   stacks, left-aligned, and the wrapper returns as a column that opens the
+   reset prompt under its trigger. */
+@media (max-width: 45rem) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-controls {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 1rem;
+    margin-inline-start: 0;
+  }
+
+  .app-header .reset-control {
+    display: flex;
+  }
+}
+
+/* Narrow screens */
+@media (max-width: 40rem) {
+  .field-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  th,
+  td {
+    padding-inline: 0.5rem;
+  }
+}
+
+/* Wide screens. Once the content column holds a table's minimum (plus the
+   shell's 1.5rem padding each side), its wrapper stops scrolling, so the
+   header sticks to the page instead of to a wrapper that never scrolls up or
+   down. The table then just fills the column: a classic scrollbar narrows
+   the column below what the query assumes, and the table's minimum would
+   then push it past the column's edge. */
+@media (min-width: 48rem) {
+  .table-scroll--requests {
+    overflow-x: visible;
+  }
+
+  .table-scroll--requests .data-table {
+    inline-size: 100%;
+  }
+}
+
+@media (min-width: 55.5rem) {
+  .table-scroll--audit {
+    overflow-x: visible;
+  }
+
+  .table-scroll--audit .data-table {
+    inline-size: 100%;
+  }
+
+  /* With room to spare, Status keeps "Waiting for Information" on one line. */
+  .table-scroll--requests th:nth-child(5) {
+    inline-size: 13rem;
+  }
+}
