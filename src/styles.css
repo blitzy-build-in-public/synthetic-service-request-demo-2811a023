@@ -68,6 +68,15 @@ time {
   white-space: nowrap;
 }
 
+/* A stored timestamp whose local year lies outside 0 to 9999 is shown as its
+   raw ISO text, which is longer than the timestamp columns and has no break
+   opportunity, so it may break anywhere inside its cell rather than run into
+   the next one. The formatted text keeps to one line. */
+time.raw-timestamp {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 label,
 dt,
 th {

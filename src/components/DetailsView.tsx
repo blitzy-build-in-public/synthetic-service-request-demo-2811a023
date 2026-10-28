@@ -8,7 +8,7 @@ import { useAppState, useAppStore } from '../state/StoreContext';
 import { ActionPanel } from './ActionPanel';
 import { RequestForm } from './RequestForm';
 import { hrefForList } from './useHashRoute';
-import { formatBlank, formatStatusCell, formatTimestamp } from './format';
+import { formatBlank, formatStatusCell, formatTimestamp, timestampClassName } from './format';
 
 /** Props for `NotFound`. */
 export interface NotFoundProps {
@@ -207,7 +207,9 @@ export function DetailsView({ id }: DetailsViewProps) {
           <div>
             <dt>Last updated</dt>
             <dd>
-              <time dateTime={request.lastUpdated}>{formatTimestamp(request.lastUpdated)}</time>
+              <time dateTime={request.lastUpdated} className={timestampClassName(request.lastUpdated)}>
+                {formatTimestamp(request.lastUpdated)}
+              </time>
             </dd>
           </div>
           {/* A presentation read of the status, not a permission decision: the reason is shown only
@@ -263,7 +265,9 @@ export function DetailsView({ id }: DetailsViewProps) {
             {request.auditHistory.map((entry, index) => (
               <tr key={index}>
                 <td>
-                  <time dateTime={entry.timestamp}>{formatTimestamp(entry.timestamp)}</time>
+                  <time dateTime={entry.timestamp} className={timestampClassName(entry.timestamp)}>
+                    {formatTimestamp(entry.timestamp)}
+                  </time>
                 </td>
                 <td>{entry.role}</td>
                 <td>{entry.action}</td>

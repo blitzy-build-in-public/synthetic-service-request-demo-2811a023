@@ -91,6 +91,14 @@ function listRow(id: string): string[] {
   return row;
 }
 
+/** A `<time>` element's class attribute, text and `dateTime`; throws when `time` is not a `<time>` element. */
+function readTime(time: Element | null): { className: string | null; text: string; dateTime: string } {
+  if (!(time instanceof HTMLTimeElement)) {
+    throw new Error('Expected a <time> element.');
+  }
+  return { className: time.getAttribute('class'), text: time.textContent, dateTime: time.dateTime };
+}
+
 /** Text of the element that `element`'s `aria-describedby` names, or null when it names none. */
 function describedMessage(element: HTMLElement): string | null {
   const id = element.getAttribute('aria-describedby');
@@ -1156,6 +1164,39 @@ describe('UI edge cases', () => {
     expect(store.getState().requests).toEqual(createSampleRequests());
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  // `toISOString` writes a year outside 0 to 9999 with a sign and six digits. None of these has a four-digit
+  // local year in any time zone, so each is shown as stored, and only such text carries the class that lets
+  // it wrap inside its fixed-width column.
+  it.each(['+275760-09-13T00:00:00.000Z', '-000001-06-15T12:00:00.000Z', '+010000-06-15T12:00:00.000Z'])(
+    'a stored %s shows as stored with the raw-timestamp class in the list, Last updated and audit history',
+    (timestamp) => {
+      const requests = createSampleRequests().map((request) =>
+        request.id === 'REQ-0001'
+          ? {
+              ...request,
+              lastUpdated: timestamp,
+              auditHistory: request.auditHistory.map((entry) => ({ ...entry, timestamp })),
+            }
+          : request,
+      );
+      const initial = { [STORAGE_KEY]: JSON.stringify({ version: 1, requests }) };
+      renderApp({ storage: createMemoryStorage({ initial }) });
+      const raw = { className: 'raw-timestamp', text: timestamp, dateTime: timestamp };
+
+      expect(column(readTableRows(listTable()), LIST_COLUMN.id)).toEqual(SAMPLE_IDS);
+      const [first, ...others] = Array.from(listTable().querySelectorAll('tbody time'), readTime);
+      expect(first).toEqual(raw);
+      expect(others.map(({ className, dateTime }) => ({ className, dateTime }))).toEqual([
+        { className: null, dateTime: '2026-01-07T09:30:00.000Z' },
+        { className: null, dateTime: '2026-01-09T14:30:00.000Z' },
+      ]);
+
+      goToHash('#/requests/REQ-0001');
+      expect(readTime(getDetailsValue('Last updated').querySelector('time'))).toEqual(raw);
+      expect(Array.from(auditTable().querySelectorAll('tbody time'), readTime)).toEqual([raw]);
+    },
+  );
 });
 
 describe('List view contract', () => {

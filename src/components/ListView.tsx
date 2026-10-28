@@ -5,7 +5,7 @@ import type { FieldErrors } from '../domain/validation';
 import { useAppState, useAppStore } from '../state/StoreContext';
 import { RequestForm } from './RequestForm';
 import { hrefForRequest, navigate } from './useHashRoute';
-import { formatBlank, formatTimestamp } from './format';
+import { formatBlank, formatTimestamp, timestampClassName } from './format';
 
 const BLANK_CREATE_FIELDS: CreateFields = { requesterName: '', requestType: '', description: '' };
 
@@ -113,7 +113,9 @@ export function ListView() {
                   <td>{request.priority}</td>
                   <td>{request.status}</td>
                   <td>
-                    <time dateTime={request.lastUpdated}>{formatTimestamp(request.lastUpdated)}</time>
+                    <time dateTime={request.lastUpdated} className={timestampClassName(request.lastUpdated)}>
+                      {formatTimestamp(request.lastUpdated)}
+                    </time>
                   </td>
                 </tr>
               ))}
